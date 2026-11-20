@@ -38,3 +38,7 @@ node scripts/live-desktop.mjs --synthetic
 ## Coverage limits
 
 The signed-in desktop model check covered full-book planning and the first Socratic question. The separate live grading check sampled Exercise 2.1 and its follow-up. Scripted exam responses exercise provenance, retry, progression and persistence. They do not independently grade the mathematical correctness of model-authored solutions. The interactive reader checks sampled three pages of the EQI draft.
+
+## Navigation in Courses 0.1.1
+
+On 20 November 2026 the stock desktop test imported the same EQI PDF in a disposable profile. After moving on to §1.2, it scrolled the assigned PDF page and clicked the visible **Back to chapters** button. The chapter list focused Chapter 1. **Back to all courses** returned focus to the book. Reopening Chapter 1 restored §1.2 and the saved transcript. The test also returned from the PDF to the lesson and from the lesson to the chapter list.

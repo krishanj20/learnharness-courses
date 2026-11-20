@@ -96,6 +96,19 @@ export function activate(ctx) {
         return n;
       }
       const heading = (tag, title) => body.append(el(tag, title));
+      function navigation(...buttons) {
+        const nav = el('nav', null, 'bc-navigation');
+        nav.setAttribute('aria-label', 'Course navigation');
+        nav.append(...buttons);
+        body.append(nav);
+      }
+      function backToChapters() {
+        return button('Back to chapters', async () => {
+          const selected = index;
+          await refreshCourse();
+          paintCourse(selected);
+        });
+      }
       async function pdf() {
         if (docTask && docBook === course.id) return docTask.promise;
         forgetPdf();
@@ -164,6 +177,7 @@ export function activate(ctx) {
         paintCourse();
       }
       async function library() {
+        const previousBook = course?.id;
         course = null;
         index = null;
         forgetPdf();
@@ -192,6 +206,7 @@ export function activate(ctx) {
             el('p', item.count + ' chapters · ' + item.prepared + ' planned'),
           );
           body.append(row);
+          if (item.id === previousBook) row.querySelector('button').focus();
         }
       }
       async function refreshCourse() {
@@ -219,10 +234,10 @@ export function activate(ctx) {
         });
         await refreshCourse();
       }
-      function paintCourse() {
+      function paintCourse(selected = null) {
         index = null;
         reset();
-        body.append(button('All courses', library));
+        navigation(button('Back to all courses', library));
         heading('h1', course.title);
         if (course.warnings?.length) {
           const d = el('details');
@@ -284,6 +299,7 @@ export function activate(ctx) {
             ),
           );
           body.append(row);
+          if (i === selected) row.querySelector('button').focus();
         }
       }
       async function loadChat() {
@@ -398,11 +414,12 @@ export function activate(ctx) {
       async function openReader(start, end) {
         const d = await pdf();
         reset();
-        body.append(
-          button('Back to chapter', () => {
+        navigation(
+          button('Back to lesson', () => {
             readerPage = null;
             paintChat();
           }),
+          backToChapters(),
         );
         readerPage = Math.max(start, Math.min(end, readerPage ?? start));
         const labels = await d.getPageLabels();
@@ -459,12 +476,7 @@ export function activate(ctx) {
         reset();
         const ch = course.chapters[index],
           s = ch.sections[chat.section];
-        body.append(
-          button(course.title, async () => {
-            await refreshCourse();
-            paintCourse();
-          }),
-        );
+        navigation(backToChapters());
         heading('h1', index + 1 + '. ' + ch.title);
         if (!ch.objectives) {
           body.append(

@@ -64,7 +64,8 @@ export async function runCourseChecks({
     await page().waitForSelector('canvas[aria-label="Original PDF page ' + number + '"]');
     if (number < 37) await click('Next page');
   }
-  await click('Back to chapter');
+  await click('Back to lesson');
+  await see('Printed pp. 7–9 · PDF pp. 35–37', '.bc-reading');
   await observe(
     'Reader rendered PDF pages 35, 36 and 37 with no tutor question before the reading acknowledgement',
   );
@@ -104,6 +105,28 @@ export async function runCourseChecks({
   await click('Continue to next reading');
   await see('Modes of Exchange', '.bc-reading h2');
   await observe('Reconnect resumed the saved answer once and §1.2 reopened the reading gate');
+  const saved = await call('chat', { id, chapter: 0 });
+  await click('Open assigned pages');
+  await page().waitForSelector('canvas[aria-label="Original PDF page 37"]');
+  // Check the navigation while the lower part of the PDF page is visible.
+  await page().$eval('.book-courses canvas', (canvas) => canvas.scrollIntoView({ block: 'end' }));
+  const back = await page().waitForSelector('.bc-navigation button:last-child');
+  assert.ok(await back.isIntersectingViewport({ threshold: 1 }));
+  await back.click();
+  await see(chapter, '.bc-card');
+  assert.equal(await page().evaluate(() => document.activeElement.textContent), chapter);
+  await click('Back to all courses');
+  await see('Create course', '.book-courses');
+  assert.equal(await page().evaluate(() => document.activeElement.textContent), title);
+  await click(title);
+  await click(chapter);
+  await see('Modes of Exchange', '.bc-reading h2');
+  assert.deepEqual(await call('chat', { id, chapter: 0 }), saved);
+  await click('Back to chapters');
+  await see(chapter, '.bc-card');
+  await observe(
+    'Returned from scrolled PDF to chapters, then to all courses; reopening restored §1.2 and its transcript. The lesson also returned directly to chapters.',
+  );
   await call('prepare', { id, chapter: 2 });
   assert.ok(
     fixture.requests.some((r) =>
@@ -135,7 +158,6 @@ export async function runCourseChecks({
     const addr = await examReady(index);
     let first;
     if (index === 1) {
-      await click(title);
       await click('2. ' + course.chapters[index].title);
       await click('Start chapter exam');
       await see('Book exercise 2.1', '.book-courses');

@@ -46,6 +46,22 @@
   color: white;
   border-color: #2c594a;
 }
+.book-courses .bc-navigation {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  padding: 0.25rem 0;
+  background: var(--background, Canvas);
+}
+.book-courses .bc-navigation button:first-child::before {
+  content: '←' / '';
+  margin-right: 0.4em;
+}
+.book-courses .bc-card button {
+  scroll-margin-top: 4rem;
+}
 .book-courses[aria-busy='true'] button {
   cursor: progress;
 }
