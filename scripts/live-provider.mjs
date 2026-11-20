@@ -80,7 +80,7 @@ function logicalReply(instruction, input) {
   }
   if (instruction.includes('"solved"')) {
     const answer = input.history?.filter((m) => m.role === 'learner').at(-1)?.text || '';
-    const guided = answer.includes('I need a smaller step');
+    const guided = input.helpRequested || answer.includes('I need a smaller step');
     return {
       reply: guided
         ? 'What does the first observation tell you?'

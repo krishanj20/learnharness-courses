@@ -23,7 +23,12 @@ export async function runCourseChecks({
     const selector = '[data-testid="thinking-field"] [role="textbox"]';
     await page().focus(selector);
     await page().keyboard.sendCharacter(reasoning);
-    await page().waitForFunction((s, text) => document.querySelector(s)?.textContent.includes(text), {}, selector, reasoning);
+    await page().waitForFunction(
+      (s, text) => document.querySelector(s)?.textContent.includes(text),
+      {},
+      selector,
+      reasoning,
+    );
   }
   const call = async (operation, input) =>
     (await api('/api/plugins/book-courses/call', 'POST', { operation, input })).result;
@@ -196,9 +201,7 @@ export async function runCourseChecks({
   );
   const nativeId = new URL(page().url()).pathname.split('/').at(-1);
   await click('Ten percent');
-  await enterReasoning(
-    'Divide the price change by the initial price, so 10/100 gives ten percent.',
-  );
+  await enterReasoning('Divide the price change by the initial price, so 10/100 gives ten percent.');
   await click('Submit answer');
   await eventually(async () =>
     assert.ok(
@@ -282,6 +285,23 @@ export async function runCourseChecks({
       assert.ok(fixture.visualExamExercises.includes('2.1'), 'Exercise 2.1 sent a page image');
       await click('View source page');
       await page().waitForSelector('canvas[aria-label="Original PDF page 99"]');
+      await click('Back to question');
+      await click('I don’t know');
+      await see('What does the first observation tell you?', '.book-courses');
+      await click('Back to exam questions');
+      await click('Exercise 2.2 · Available');
+      await see('Book exercise 2.2', '.book-courses');
+      assert.ok(!(await page().$eval('.book-courses', (el) => el.innerText)).includes('first observation'));
+      await stop();
+      await launch();
+      await click('Courses');
+      await click(title);
+      await click('2. ' + course.chapters[index].title);
+      await click('Exercise 2.1 · In progress');
+      await see('What does the first observation tell you?', '.book-courses');
+      await observe(
+        'EQI 2.1 responded to I don’t know with a smaller question. Opening 2.2 showed a separate chat. Restarting restored the 2.1 hint.',
+      );
     } else first = await call('exam', addr);
     assert.equal(first.exam.current.origin, index === 0 ? 'Tutor-written' : 'Book exercise');
     if (index === 1) assert.equal(first.exam.current.number, '2.1');

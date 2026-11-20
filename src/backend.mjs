@@ -1,3 +1,4 @@
+import { advanceExam, restoreExamThreads } from './exam-threads.mjs';
 import { practiceOffer, practiceSummary, registerReview } from './review.mjs';
 import { registerTeaching } from './native-teaching.mjs';
 import fs from 'node:fs';
@@ -285,6 +286,7 @@ export function activate(ctx) {
         fresh.chapters[chapter] = ch;
         save(id, fresh);
       };
+      restoreExamThreads(ch.chat);
       const previousPhase = ch.chat.phase;
       await fn(ch, store);
       if (previousPhase !== 'complete' && ch.chat.phase === 'complete') ch.chat.examCompletedAt = Date.now();
@@ -399,7 +401,11 @@ export function activate(ctx) {
         b = book(a.id),
         source = b.chapters[a.chapter],
         images = imageList(a);
-      if (!c.pending) {
+      const thread = c.phase === 'exam' ? c.exam.queue[c.exam.index] : null;
+      if (a.questionId !== undefined && thread?.id !== a.questionId)
+        throw Error('Reopen this exam question to continue.');
+      const conversation = thread ?? c;
+      if (!conversation.pending) {
         if (c.phase === 'reading' && a.action !== 'read')
           throw Error('Confirm the assigned reading before starting.');
         if (
@@ -410,19 +416,24 @@ export function activate(ctx) {
         if (!['reading', 'discussion', 'exam'].includes(c.phase)) throw Error('No active question.');
         if (a.action === 'answer' && (typeof a.text !== 'string' || !a.text.trim()))
           throw Error('Enter an answer.');
-        if (a.action === 'answer') c.messages.push(msg('learner', a.text.trim()));
-        c.pending = { action: a.action, text: a.text?.trim(), submittedAt: Date.now() };
+        if (a.action === 'answer') conversation.messages.push(msg('learner', a.text.trim()));
+        conversation.pending = { action: a.action, text: a.text?.trim(), submittedAt: Date.now() };
         c.rev++;
         checkpoint();
       } else if (a.action !== 'retry') throw Error('Retry the saved answer to continue.');
       if (c.phase === 'exam') {
-        const item = c.exam.items[c.exam.index];
+        const item = thread.item;
+        const helpRequested =
+          /^(?:i (?:don['’]t|do not) know|help(?: me)?)[.!?]?(?: please help me work through this[.!?]?)?$/i.test(
+            conversation.pending.text,
+          );
         const r = await ask(
           ctx,
           gradePrompt,
           {
             item,
-            history: c.messages.slice(item.historyStart ?? 0),
+            helpRequested,
+            history: thread.messages,
             reading: sourceForItem(
               source,
               item,
@@ -431,17 +442,24 @@ export function activate(ctx) {
           },
           images,
         );
+        if (helpRequested && r.solved === true) {
+          r.solved = false;
+          r.assisted = true;
+          r.reply =
+            'Let’s start with the goal. In your own words, what does this question ask you to find or prove?';
+        }
         const reply = validReply(r);
         if (typeof r.solved !== 'boolean' || typeof r.assisted !== 'boolean')
           throw Error('Incomplete exam assessment. Retry the saved answer.');
         const assisted = !!item.assisted || r.assisted || !r.solved;
-        c.messages.push(msg('tutor', reply));
+        conversation.messages.push(msg('tutor', reply));
         item.assisted = assisted;
         if (r.solved) {
+          thread.done = true;
           c.results.push({
-            solvedAt: c.pending.submittedAt ?? Date.now(),
+            solvedAt: conversation.pending.submittedAt ?? Date.now(),
             question: item.question,
-            answer: c.pending.text,
+            answer: conversation.pending.text,
             objectives: item.objectives,
             fullyTested: item.fullyTested ?? [],
             testedSkill: item.testedSkill ?? item.question,
@@ -457,6 +475,10 @@ export function activate(ctx) {
           });
           if (assisted && !item.transfer)
             c.exam.queue.splice(c.exam.index + 1, 0, {
+              id: thread.id + '-follow-up',
+              label: thread.number
+                ? 'Follow-up to Exercise ' + thread.number
+                : 'Follow-up to ' + (thread.label ?? 'question'),
               transfer: true,
               objectives: item.objectives,
               previous: item.question,
@@ -464,8 +486,7 @@ export function activate(ctx) {
               testedSkill: item.testedSkill ?? item.question,
               fullyTested: item.fullyTested ?? [],
             });
-          c.exam.index++;
-          c.phase = c.exam.index >= c.exam.queue.length ? 'complete' : 'exam-next';
+          advanceExam(c, c.exam.index + 1);
         }
       } else {
         const objectives = ch.objectives.filter((o) => o.section === c.section);
@@ -478,19 +499,19 @@ export function activate(ctx) {
             objectives,
             alreadyDemonstrated: c.covered,
             history: c.messages.slice(c.sectionTurnStart ?? 0),
-            action: c.pending.action,
+            action: conversation.pending.action,
           },
           images,
         );
-        if (c.pending.action === 'answer' && !Array.isArray(r?.demonstrated))
+        if (conversation.pending.action === 'answer' && !Array.isArray(r?.demonstrated))
           throw Error('Incomplete discussion assessment. Retry the saved answer.');
-        c.messages.push(msg('tutor', validReply(r)));
-        if (c.pending.action === 'answer')
+        conversation.messages.push(msg('tutor', validReply(r)));
+        if (conversation.pending.action === 'answer')
           c.covered = [...new Set([...c.covered, ...checkedIds(r.demonstrated, objectives)])];
         c.ready = objectives.every((o) => c.covered.includes(o.id));
         c.phase = 'discussion';
       }
-      delete c.pending;
+      delete conversation.pending;
     }),
   );
 
@@ -506,25 +527,36 @@ export function activate(ctx) {
     edit(a, async (ch) => {
       ref(ch);
       const c = ch.chat;
-      if (!['exam-ready', 'exam-next'].includes(c.phase)) throw Error('Finish the chapter readings first.');
+      if (!['exam-ready', 'exam-next', 'exam'].includes(c.phase))
+        throw Error('Finish the chapter readings first.');
       const b = book(a.id),
         source = b.chapters[a.chapter];
       if (!c.exam) {
         const exercises = source.exercises.filter((e) => !e.blocked);
         c.exam = {
           index: 0,
-          items: [],
           queue: exercises.length
-            ? exercises.map((e) => ({ number: e.id }))
+            ? exercises.map((e) => ({ id: 'book-' + e.id, number: e.id }))
             : ch.sections.map((_, i) => ({
+                id: 'section-' + i,
+                label: 'Question ' + (i + 1),
                 objectives: ch.objectives.filter((o) => o.section === i).map((o) => o.id),
               })),
           ungraded: source.exercises.filter((e) => e.blocked).map((e) => e.id + ' · ' + e.blocked),
         };
       }
       const exam = c.exam;
+      if (a.questionId !== undefined) {
+        const selected = exam.queue.findIndex((q) => q.id === a.questionId);
+        if (selected < 0 || exam.queue[selected].done) throw Error('Choose an available exam question.');
+        exam.index = selected;
+      }
       if (exam.index < exam.queue.length) {
         const entry = exam.queue[exam.index];
+        if (entry.item) {
+          c.phase = 'exam';
+          return;
+        }
         const exercise = source.exercises.find((e) => e.id === entry.number);
         const objectives = entry.objectives
           ? ch.objectives.filter((o) => entry.objectives.includes(o.id))
@@ -566,8 +598,13 @@ export function activate(ctx) {
           );
           exam.queue.splice(exam.index, 1);
           // Give a fresh question when a source exercise cannot be graded.
-          if (exercise) exam.queue.push({ objectives: objectives.map((o) => o.id) });
-          c.phase = exam.index < exam.queue.length ? 'exam-next' : 'complete';
+          if (exercise)
+            exam.queue.push({
+              id: entry.id + '-replacement',
+              label: 'Replacement for Exercise ' + entry.number,
+              objectives: objectives.map((o) => o.id),
+            });
+          advanceExam(c, exam.index);
           return;
         }
         if (entry.transfer && normalise(item.question) === normalise(entry.previous))
@@ -575,9 +612,8 @@ export function activate(ctx) {
         item.transfer = !!entry.transfer;
         if (entry.transfer)
           item.fullyTested = item.fullyTested.filter((id) => entry.fullyTested?.includes(id));
-        item.historyStart = c.messages.length;
-        exam.items.push(item);
-        c.messages.push(msg('tutor', item.question));
+        entry.item = item;
+        entry.messages = [msg('tutor', item.question)];
         c.phase = 'exam';
         return;
       }

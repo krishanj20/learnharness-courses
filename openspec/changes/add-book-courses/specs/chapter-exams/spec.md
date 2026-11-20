@@ -50,3 +50,16 @@ Courses SHALL offer a fresh problem on a weak or unassessed objective after the 
 - **WHEN** at least seven days have passed after an independently solved objective
 - **THEN** the learner can take a fresh unaided check for that objective
 - **AND** delayed independent success is distinguished from guided work and immediate practice
+
+### Requirement: A conversation for each exam question
+After the lessons, Courses SHALL let the learner open an eligible book exercise by number, ask for one smaller step, and return to the list to work on another question. Each question SHALL keep its own transcript, saved reply awaiting grading, and completion state. The tutor SHALL use only the selected question’s dialogue when responding.
+
+#### Scenario: Switch questions midway through a derivation
+- **WHEN** the learner asks for help on Exercise 2.1 and then opens Exercise 2.2
+- **THEN** Exercise 2.2 opens with its own problem and conversation
+- **AND** returning to 2.1 after restarting restores the original problem, attempts and most recent hint
+- **AND** completing one exercise leaves other unfinished questions available
+
+#### Scenario: Resume an exam begun in an earlier version
+- **WHEN** a saved chapter has a sequential exam transcript
+- **THEN** its submitted work, hints and results remain attached to the corresponding question, including a pending answer that needs a retry

@@ -49,6 +49,7 @@ export function activate(ctx) {
       let course,
         index,
         chat,
+        questionId = null,
         docTask,
         docBook,
         locked = false,
@@ -299,6 +300,7 @@ export function activate(ctx) {
           const row = el('article', null, 'bc-card');
           row.append(
             button(i + 1 + '. ' + ch.title, async () => {
+              questionId = null;
               index = i;
               openPlan = false;
               await loadChat();
@@ -480,7 +482,10 @@ export function activate(ctx) {
         const labels = await doc.getPageLabels();
         reset();
         navigation(
-          button(lessonIndex === 'exam' ? 'Back to exam' : 'Back to lesson', () => paintChat(lessonIndex)),
+          button(
+            questionId ? 'Back to question' : lessonIndex === 'exam' ? 'Back to exam' : 'Back to lesson',
+            () => paintChat(lessonIndex),
+          ),
           backToChapters(),
         );
         const ch = course.chapters[index];
@@ -512,19 +517,79 @@ export function activate(ctx) {
             : (ch.objectives?.find((o) => o.section === chat.section && !chat.covered.includes(o.id))?.page ??
               s.start);
         show('Tutor is reading your section…');
-        await act('turn', { action, text, images: await images([page]) }, 'Waiting for your tutor…');
-      }
-      async function exam() {
-        const ch = course.chapters[index],
-          list = ch.exercisePages.filter((e) => !e.blocked);
-        const next = chat.exam ? list.find((e) => e.id === chat.exam.next) : list[0];
-        show('Checking the chapter question…');
         await act(
-          'exam',
-          {
-            images: await images(next ? [next.page, next.endPage, next.answerPage, next.answerEndPage] : []),
-          },
-          'Preparing the chapter exam…',
+          'turn',
+          { action, text, ...(questionId ? { questionId } : {}), images: await images([page]) },
+          'Waiting for your tutor…',
+        );
+      }
+      async function openQuestion(id) {
+        const q = chat.exam?.questions.find((entry) => entry.id === id);
+        if (q?.status === 'Done' || (chat.phase === 'exam' && chat.exam.current?.id === id)) {
+          questionId = id;
+          paintChat();
+          return;
+        }
+        const list = course.chapters[index].exercisePages.filter((e) => !e.blocked);
+        const next = id
+          ? list.find((e) => 'book-' + e.id === id)
+          : chat.exam
+            ? list.find((e) => e.id === chat.exam.next)
+            : list[0];
+        show('Opening the question chat…');
+        const state = await call('exam', {
+          ...args(),
+          questionId: id,
+          images:
+            next && !q?.question
+              ? await images([next.page, next.endPage, next.answerPage, next.answerEndPage])
+              : [],
+        });
+        questionId = state.phase === 'exam' ? state.exam.current.id : null;
+        await loadChat();
+        show('');
+      }
+      function questionView(q) {
+        navigation(
+          button('Back to exam questions', () => {
+            questionId = null;
+            paintChat('exam');
+          }),
+          backToChapters(),
+        );
+        heading('h1', q.label);
+        body.append(el('p', course.chapters[index].title + ' · ' + q.status));
+        body.append(
+          el(
+            'p',
+            q.origin +
+              (q.number ? ' ' + q.number : '') +
+              ' · ' +
+              q.answerOrigin +
+              (q.hintOrigin ? ' · ' + q.hintOrigin : ''),
+          ),
+          button('View source page', () => openReader(q.page, q.endPage ?? q.page, 'exam')),
+        );
+        messages(body, q.messages);
+        if (q.status === 'Done') {
+          const next = chat.exam.questions[chat.exam.index];
+          if (next) body.append(button('Next exam question', () => openQuestion(next.id), true));
+          return;
+        }
+        if (chat.phase !== 'exam' || chat.exam.current?.id !== q.id) {
+          body.append(button('Resume question', () => openQuestion(q.id), true));
+          return;
+        }
+        if (q.pending) {
+          body.append(
+            el('p', 'Your answer is saved. Reconnect to the model to continue.'),
+            button('Retry saved turn', () => turn('retry'), true),
+          );
+          return;
+        }
+        form(body, 'Your answer', (text) => turn('answer', text));
+        body.append(
+          button('I don’t know', () => turn('answer', 'I don’t know. Please help me work through this.')),
         );
       }
       function messages(parent, transcript) {
@@ -550,8 +615,26 @@ export function activate(ctx) {
         );
         if (studying)
           panel.append(el('p', 'Available after all ' + ch.sections.length + ' lessons are done.'));
-        else if (chat.phase === 'exam-ready') panel.append(button('Start chapter exam', exam, true));
+        else if (chat.phase === 'exam-ready')
+          panel.append(button('Start chapter exam', () => openQuestion(), true));
         else panel.append(el('p', chat.phase === 'complete' ? 'Done · See results below.' : 'In progress'));
+        if (!studying) {
+          const questions =
+            chat.exam?.questions ??
+            eligible.map((e) => ({
+              id: 'book-' + e.id,
+              label: 'Exercise ' + e.id,
+              status: 'Available',
+            }));
+          const list = el('ul', null, 'bc-questions');
+          for (const q of questions) {
+            const row = el('li');
+            row.append(button(q.label + ' · ' + q.status, () => openQuestion(q.id)));
+            list.append(row);
+          }
+          panel.append(list);
+        }
+        for (const reason of chat.exam?.ungraded ?? []) panel.append(el('p', reason));
         const ranges = new Map();
         for (const e of exercises) {
           const end = e.endPage ?? e.page;
@@ -582,6 +665,7 @@ export function activate(ctx) {
         panel.append(
           button(offer.active ? 'Continue problem' : 'Try one problem', async () => {
             if (item) course = await call('course', { id: item.id });
+            questionId = null;
             index = offer.chapter;
             openPlan = false;
             await loadChat();
@@ -641,6 +725,9 @@ export function activate(ctx) {
         reset();
         const ch = course.chapters[index],
           s = ch.sections[chat.section];
+        const selected = chat.exam?.questions.find((q) => q.id === questionId);
+        if (selected?.question) return questionView(selected);
+        questionId = null;
         navigation(backToChapters());
         heading('h1', index + 1 + '. ' + ch.title);
         if (!ch.objectives) {
@@ -723,31 +810,15 @@ export function activate(ctx) {
         }
         if (studying) reading(ch, s);
         const from = studying ? chat.sectionTurnStart : (chat.examTurnStart ?? chat.sectionTurnStart);
-        messages(body, chat.messages.slice(from ?? 0));
-        if (chat.pending) {
+        if (studying) messages(body, chat.messages.slice(from ?? 0));
+        if (studying && chat.pending) {
           body.append(
             el('p', 'Your answer is saved. Reconnect to the model to continue.'),
             button('Retry saved turn', () => turn('retry'), true),
           );
           return;
         }
-        if (chat.phase === 'discussion' || chat.phase === 'exam') {
-          if (chat.phase === 'exam') {
-            const item = chat.exam.current;
-            body.append(
-              el(
-                'p',
-                item.origin +
-                  (item.number ? ' ' + item.number : '') +
-                  ' · ' +
-                  item.answerOrigin +
-                  (item.hintOrigin ? ' · ' + item.hintOrigin : ''),
-              ),
-              button('View source page', () => {
-                return openReader(item.page, item.endPage ?? item.page);
-              }),
-            );
-          }
+        if (chat.phase === 'discussion') {
           form(body, 'Your answer', (text) => turn('answer', text));
           body.append(
             button('I don’t know', () => turn('answer', 'I don’t know. Please help me work through this.')),
@@ -763,13 +834,9 @@ export function activate(ctx) {
               ),
             );
         }
-        if (chat.phase === 'exam-next')
-          for (const reason of chat.exam?.ungraded ?? []) body.append(el('p', reason));
-        if (chat.phase === 'exam-next') body.append(button('Next exam question', exam, true));
         if (chat.phase === 'complete') {
           heading('h2', 'Chapter exam results');
           for (const p of ch.practice) body.append(reviewObjective(p));
-          for (const label of chat.exam.ungraded ?? []) body.append(el('p', label));
           for (const r of chat.results) {
             const d = el('details');
             d.append(

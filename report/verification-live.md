@@ -71,3 +71,9 @@ On 20 November 2026 the normal desktop and the stock LearnHarness model service 
 The one-week scenario tests the timing and recording of a follow-up. Measuring retention requires the learner to return and attempt it after a real week. The three controlled grading examples do not estimate accuracy across all chapters or learners.
 
 All 48 automated checks passed with the supplied EQI and Fixed Income Relative Value Analysis PDFs. The second import recovered the eight Mean Reversion lessons. A multi-day exam regression dated the one-week check from the independent answer on the individual objective.
+
+## Individual exam chats in Courses 0.1.6
+
+On 20 November 2026 a disposable LearnHarness 0.6.1 desktop profile opened EQI Exercise 2.1, inspected its source on PDF page 99 and selected **I don’t know**. The scripted tutor asked a smaller question. Exercise 2.2 opened with its own conversation. After a desktop restart, reopening 2.1 restored the original exercise, the learner’s request and the same hint.
+
+In a separate disposable profile the configured ChatGPT model responded to the same request on 2.1 by introducing the gross return for each period and asking the learner to write the arithmetic–geometric mean inequality for those returns. The exercise remained in progress. Opening 2.2 and returning to 2.1 preserved the hint. Both pilots used staged chapter progress.

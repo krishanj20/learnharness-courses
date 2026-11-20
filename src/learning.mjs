@@ -1,3 +1,4 @@
+import { publicExam, restoreExamThreads } from './exam-threads.mjs';
 import { anchorPassages } from './passages.mjs';
 
 const asText = (content) =>
@@ -298,23 +299,10 @@ export function initialChat() {
 }
 
 export function publicChat(chat) {
+  restoreExamThreads(chat);
   const { exam, ...visible } = chat;
-  return {
-    ...visible,
-    exam: exam
-      ? {
-          index: exam.index,
-          count: exam.items.length,
-          ungraded: exam.ungraded,
-          next: exam.queue[exam.index]?.number ?? null,
-          current: exam.items[exam.index] ? publicItem(exam.items[exam.index]) : null,
-        }
-      : null,
-  };
-}
-function publicItem(item) {
-  const { question, page, endPage, origin, answerOrigin, hintOrigin, number, transfer } = item;
-  return { question, page, endPage, origin, answerOrigin, hintOrigin, number, transfer: !!transfer };
+  const pending = chat.phase === 'exam' && exam?.queue[exam.index]?.pending;
+  return { ...visible, ...(pending ? { pending } : {}), exam: publicExam(exam) };
 }
 
 export function verifiedItem(output, exercise, objectives, hasImages = false) {

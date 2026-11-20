@@ -96,6 +96,7 @@ function host(t, chapters = [chapter(solo)], sessions = [], nodes = []) {
   }
   const id = importBook(source.title);
   return {
+    root,
     restart,
     importBook,
     id,
@@ -825,7 +826,8 @@ test('a helper update persisted after a native probe counts only if visible befo
   const answer = reasonedQuiz('answered', 'Explain the calculation.', 'Multiply', explanation);
   answer.details.answeredAt = '2026-11-20T10:01:00Z';
   const marker = (at) => ({
-    role: 'custom', customType: 'side-question',
+    role: 'custom',
+    customType: 'side-question',
     details: { updates: [{ role: 'assistant', at, text: explanation }] },
   });
   const [before] = nativeAnswers([answer, marker('2026-11-20T10:00:00Z')]);
@@ -834,4 +836,119 @@ test('a helper update persisted after a native probe counts only if visible befo
   const [after] = nativeAnswers([answer, marker('2026-11-20T10:02:00Z')]);
   assert.equal(after.assisted, undefined);
   assert.equal(after.tutorContext, undefined);
+});
+
+test('open book exercises in any order and retry a saved answer inside its own question chat', async (t) => {
+  const exercises = ['3.1', '3.2'].map((id) => ({
+    id,
+    text: 'Derive the result for exercise ' + id,
+    page: 1,
+  }));
+  const h = host(t, [chapter(solo, exercises)]);
+  await finishReadings(h);
+  h.reply(verification());
+  const open = (id) => h.call('exam', { questionId: 'book-' + id });
+  const answer = (id, text) => h.call('turn', { action: 'answer', text, questionId: 'book-' + id });
+  await open('3.2');
+  h.reply({ solved: true, assisted: false, reply: 'Correct!' });
+  const help = await answer('3.2', 'I don’t know. Please help me work through this.');
+  assert.equal(help.results.length, 0);
+  assert.match(help.exam.current.messages.at(-1).text, /find or prove/);
+  h.reply(() => {
+    throw Error('offline');
+  });
+  await assert.rejects(answer('3.2', 'Should I start by factoring?'), /offline/);
+  h.reply(verification());
+  const other = await open('3.1');
+  assert.deepEqual(
+    other.exam.current.messages.map((m) => m.text),
+    [exercises[0].text],
+  );
+  await assert.rejects(answer('3.2', 'Wrong tab'), /Reopen/);
+  h.reply((input) => {
+    assert.deepEqual(
+      input.history.map((m) => m.text),
+      [exercises[0].text, 'My full independent proof.'],
+    );
+    return { solved: true, assisted: false, reply: 'That establishes the result.' };
+  });
+  const done = await answer('3.1', 'My full independent proof.');
+  assert.equal(done.phase, 'exam-next');
+  h.restart();
+  const back = await open('3.2');
+  assert.ok(back.exam.current.pending);
+  assert.equal(back.exam.questions.find((q) => q.number === '3.1').status, 'Done');
+  h.reply((input) => {
+    assert.equal(input.history.filter((m) => m.text === 'Should I start by factoring?').length, 1);
+    assert.ok(!JSON.stringify(input.history).includes('independent proof'));
+    return { solved: false, assisted: true, reply: 'Which factor occurs in both terms?' };
+  });
+  await h.call('turn', { action: 'retry', questionId: 'book-3.2' });
+  h.reply({ solved: true, assisted: false, reply: 'You completed the original proof.' });
+  const result = await answer('3.2', 'Here is my complete reasoning.');
+  assert.deepEqual(
+    result.results.map((r) => [r.number, r.assisted]),
+    [
+      ['3.1', false],
+      ['3.2', true],
+    ],
+  );
+  assert.equal(result.exam.questions.at(-1).label, 'Follow-up to Exercise 3.2');
+});
+
+test('opening an older sequential exam recovers each question, the lesson transcript and the pending retry', async (t) => {
+  const { readFileSync, writeFileSync } = await import('node:fs');
+  const h = host(t, [chapter(solo)]);
+  const path = join(h.root, h.id, 'course.json');
+  await finishReadings(h);
+  const course = JSON.parse(readFileSync(path, 'utf8'));
+  const chat = course.chapters[0].chat;
+  const original = structuredClone(chat.messages);
+  chat.phase = 'exam';
+  const item = { objectives: ['1.1'], rubric: 'Private grading notes.', origin: 'Book exercise' };
+  chat.exam = {
+    index: 1,
+    queue: [{ number: '3.1' }, { number: '3.2' }],
+    ungraded: [],
+    items: [
+      { ...item, number: '3.1', question: 'First exercise', historyStart: original.length },
+      { ...item, number: '3.2', question: 'Second exercise', historyStart: original.length + 3 },
+    ],
+  };
+  chat.messages.push(
+    ...[
+      ['tutor', 'First exercise'],
+      ['learner', 'My proof'],
+      ['tutor', 'Correct'],
+      ['tutor', 'Second exercise'],
+      ['learner', 'I need help'],
+    ].map(([role, text]) => ({ role, text })),
+  );
+  chat.pending = { action: 'answer', text: 'I need help' };
+  chat.results.push({ number: '3.1', question: 'First exercise', assisted: false, objectives: ['1.1'] });
+  writeFileSync(path, JSON.stringify(course));
+  h.restart();
+  const resumed = await h.call('chat');
+  assert.deepEqual(resumed.messages, original);
+  assert.deepEqual(
+    resumed.exam.questions.map((q) => [q.status, q.messages.length]),
+    [
+      ['Done', 3],
+      ['In progress', 2],
+    ],
+  );
+  assert.ok(resumed.exam.current.pending);
+  assert.doesNotMatch(JSON.stringify(resumed), /Private grading notes/);
+  h.reply((input) => {
+    assert.deepEqual(
+      input.history.map((m) => m.text),
+      ['Second exercise', 'I need help'],
+    );
+    return { reply: 'What quantity do you need?', solved: false, assisted: true };
+  });
+  const graded = await h.call('turn', { action: 'retry', questionId: 'book-3.2' });
+  h.restart();
+  assert.deepEqual(await h.call('chat'), graded);
+  assert.equal(graded.results.length, 1);
+  assert.equal(graded.exam.questions[1].messages.length, 3);
 });
