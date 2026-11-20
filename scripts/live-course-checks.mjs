@@ -170,15 +170,23 @@ export async function runCourseChecks({
   assert.equal((await call('chat', { id, chapter: 1 })).phase, 'reading');
   await see('§2.4 · Appendix · Upcoming', '.bc-lessons');
   await see('Start with the chapter introduction before §2.1.', '.bc-reading');
+  await see('Stop at “Excess Returns”.', '.bc-reading');
+  await click('Read whole section');
+  await page().waitForSelector('.bc-page[data-page="69"]');
+  await click('Back to lesson');
   await click('Open assigned pages');
   await page().waitForSelector('canvas[aria-label="Original PDF page 57"]');
   await page().$eval('[data-page="58"]', (el) => el.scrollIntoView({ block: 'start' }));
   await page().waitForSelector('canvas[aria-label="Original PDF page 58"]');
-  assert.equal(await page().$$eval('.bc-page', (pages) => pages.at(-1).dataset.page), '69');
-  await click('I’ve read this section · Start Teaching');
+  assert.equal(await page().$$eval('.bc-page', (pages) => pages.at(-1).dataset.page), '59');
+  await click('I’ve read Definitions · Start Teaching');
   await see(
-    'What is the simple return when the price rises from 100 to 110?',
+    'On PDF p. 59, what is the simple return when the price rises from 100 to 110?',
     '[data-testid="question-dock"]',
+  );
+  assert.ok(
+    fixture.requests.some((r) => r.definitions && r.sourceInOpening && r.pageRequested && r.pageVisible),
+    'The configured native provider received Definitions text in the opening and an original-page image before its question',
   );
   const nativeId = new URL(page().url()).pathname.split('/').at(-1);
   await click('Ten percent');
@@ -198,7 +206,8 @@ export async function runCourseChecks({
   await see('1 of 14 chapter subpoints demonstrated', '.bc-status');
   await page().$eval('.bc-lessons summary', (el) => el.click());
   await see('Definitions · Demonstrated', '.bc-lessons details[open]');
-  await click('Start Teaching · Excess Returns');
+  await see('Stop at “Log Returns”.', '.bc-reading');
+  await click('I’ve read Excess Returns · Start Teaching');
   await page().waitForFunction(
     (id) => location.pathname.startsWith('/chat/') && !location.pathname.endsWith(id),
     {},
@@ -208,14 +217,30 @@ export async function runCourseChecks({
   await eventually(async () =>
     assert.match((await api('/api/chats/' + nextId)).messages[0]?.content || '', /Teach me “Excess Returns”/),
   );
+  await see('How much did a portfolio earning 5%', '[data-testid="question-dock"]');
+  await click('Two percentage points');
+  await page().type(
+    '[data-testid="thinking-field"] [role="textbox"]',
+    'Subtract the benchmark from the portfolio return. The answer is two percentage points.',
+  );
+  await click('Submit answer');
+  await eventually(async () =>
+    assert.ok(
+      (await api('/api/chats/' + nextId)).messages.some(
+        (m) => m.role === 'toolResult' && m.details?.thinking?.includes('benchmark'),
+      ),
+    ),
+  );
   await click('Courses');
+  await see('1 of 14 chapter subpoints demonstrated', '.bc-status');
+  await see('Resume Teaching · Excess Returns', '.bc-reading');
   await see('Available after all 4 lessons are done.', '.bc-exam');
   await click('Back to chapters');
   await observe(
     'Chapter 2 Definitions accepted a submitted native diagnostic answer and saved its evidence. The next Teaching opened separately for Excess Returns and the exam remained pending.',
   );
   await observe(
-    'Chapter 2 showed all four lessons and the first assignment scrolled from the chapter opening on PDF p. 57 through §2.1.',
+    'Definitions included the chapter introduction on PDF pp. 57–59. Read whole section reached p. 69. The native provider saw the actual text and page 59 image, and a copied hint in Excess Returns did not advance the learner.',
   );
   await call('prepare', { id, chapter: 2 });
   assert.ok(

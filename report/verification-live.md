@@ -54,3 +54,18 @@ Finishing Chapter 1’s first lesson marked §1.1 Done, kept its discussion avai
 On 20 November 2026, a disposable LearnHarness 0.6.1 desktop profile opened EQI §1.1 in a normal Teaching from its reading acknowledgement. The stock question dock displayed a multiple-choice probe and the Dictate control. Courses returned to Chapter 1, and Resume Teaching restored the same session and outstanding question.
 
 For EQI Chapter 2, the reader opened at the chapter introduction on PDF p. 57. In the Definitions Teaching, the test learner selected a return and entered the calculation behind it. The local scripted provider credited that saved answer. Courses reported one of 14 subpoints demonstrated, offered Excess Returns in a separate Teaching, and kept the exam pending. The exam regression subsequently opened the book’s Exercise 2.1 and its source on PDF p. 99. These checks exercised the stock UI, tools, transcript and progress storage with a scripted model. They did not record microphone audio or measure live-model grading quality.
+
+## EQI learning pilot in Courses 0.1.5
+
+On 20 November 2026 the normal desktop and the stock LearnHarness model service ran against separate disposable learner profiles. Only the supplied book, book-derived objectives and synthetic learner answers were used for the pilot. The signed-in model service used ChatGPT gpt-6.1-sol.
+
+| Chapter 2 scenario | Observation |
+| --- | --- |
+| Read the current subpoint | Definitions opened from the chapter introduction on physical p. 57 and stopped at Excess Returns on p. 59. Read whole section offered pp. 57–69. |
+| Grade a correct option alone | The live model and Courses awarded zero of 14 subpoints and requested a fresh, unaided explanation. |
+| Repeat a tutor’s explanation | The same learner selected the right option and repeated the tutor’s explanation. The count stayed at zero. |
+| Solve an unfamiliar dividend problem | The learner explained why buying at 80, selling at 78 and collecting 6 gives a price return of −2.5% and a total return of 5%. Courses credited only Definitions and cited that answer. |
+| Teach an equation from the printed page | In a separate native GARCH Teaching, the live model fetched the reading, inspected the original image on p. 70 and asked a native multiple-choice question citing that page and stating its innovation and stationarity assumptions. |
+| Practise after the exam | With a staged partial exam result, the desktop offered a fresh compounding problem on return. After independent work the app recorded a one-week due date. Advancing the disposable timestamps by seven days produced a different recovery-return problem and a separate delayed result. The exam record survived both attempts. This part used a scripted provider. |
+
+The one-week scenario tests the timing and recording of a follow-up. Measuring retention requires the learner to return and attempt it after a real week. The three controlled grading examples do not estimate accuracy across all chapters or learners.

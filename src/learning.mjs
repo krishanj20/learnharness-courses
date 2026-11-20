@@ -28,13 +28,47 @@ export function nativeAnswers(messages) {
     messages.filter((m) => m.role === 'toolResult' && !m.isError).map((m) => m.toolCallId),
   );
   const problems = new Map();
+  const needsFreshProblem = new Set();
   let question = '',
+    tutorContext = [],
     current;
+
+  function record(answer) {
+    const guidance = tutorContext.join('\n');
+    if (guidance) {
+      answer.tutorContext = guidance;
+      // A verbatim replay of a supplied explanation cannot show independent reasoning.
+      // Keep mathematical operators intact when comparing calculations.
+      const words = (s) =>
+        s
+          .normalize('NFKC')
+          .toLowerCase()
+          .trim()
+          .replace(/[.!?]+$/, '')
+          .replace(/\s+/g, ' ');
+      const reasoning = words(answer.reasoning ?? '');
+      if (reasoning.includes(' ') && words(guidance).includes(reasoning)) answer.assisted = true;
+    }
+    const questionKey = passageText(answer.prompt).toLowerCase();
+    if (needsFreshProblem.has(questionKey)) answer.assisted = true;
+    if (answer.negative || answer.assisted || answer.selectionOnly) needsFreshProblem.add(questionKey);
+    answers.push(answer);
+    tutorContext = [];
+    question = '';
+  }
   for (const m of messages) {
     if (m.role === 'assistant') {
-      question = asText(m.content);
+      const prose = [];
+      if (typeof m.content === 'string') prose.push(m.content);
       for (const call of Array.isArray(m.content) ? m.content : []) {
+        if (call.type === 'text' && call.text?.trim()) prose.push(call.text);
         if (call.type !== 'toolCall' || !completed.has(call.id)) continue;
+        if (call.name === 'send_to_user' && typeof call.arguments?.message === 'string')
+          prose.push(call.arguments.message);
+        // Only the question's public details preceded the answer. Its hidden key
+        // and explanation must not qualify as help on the question itself.
+        if (questionTools.has(call.name) && typeof call.arguments?.details === 'string')
+          prose.push(call.arguments.details);
         if (call.name === 'problem') {
           current = { prompt: call.arguments?.statement, attempts: [] };
           problems.set(call.id, current);
@@ -45,9 +79,20 @@ export function nativeAnswers(messages) {
           current = undefined;
         }
       }
+      if (prose.length) {
+        question = prose.join('\n');
+        tutorContext.push(question);
+      }
       continue;
     }
     const d = m.details ?? {};
+    if (m.role === 'custom' && m.customType === 'side-question') {
+      const updates = d.updates ?? d.snapshot;
+      if (Array.isArray(updates))
+        for (const update of updates)
+          if (update?.role === 'assistant' && typeof update.text === 'string') tutorContext.push(update.text);
+      continue;
+    }
     if (m.role === 'custom' && m.customType === 'practice-thinking') {
       const problem = problems.get(d.problemCallId);
       if (problem && typeof d.text === 'string' && d.text.trim())
@@ -61,21 +106,34 @@ export function nativeAnswers(messages) {
       d.questionText &&
       !d.dismissed
     ) {
-      const selected = (d.answers ?? []).map((a) => (typeof a === 'string' ? a : (a?.label ?? a?.value)));
-      const answer = d.dontKnow
-        ? "I don't know"
-        : [d.text, d.other, ...selected, d.thinking ?? d.note]
-            .filter((x) => typeof x === 'string')
-            .join('\n');
+      const selected = (d.answers ?? [])
+        .map((a) => (typeof a === 'string' ? a : (a?.label ?? a?.value)))
+        .filter((label) => typeof label === 'string' && label.trim());
+      const reasoning = [d.text, d.other, d.thinking ?? d.note]
+        .filter((x) => typeof x === 'string' && x.trim())
+        .join('\n')
+        .trim();
+      const answer = d.dontKnow ? "I don't know" : [...selected, reasoning].filter(Boolean).join('\n');
       if (answer.trim())
-        answers.push({
+        record({
           id: m.id,
           prompt: d.questionText,
           answer,
+          reasoning,
+          selected,
+          selectionOnly:
+            !!selected.length &&
+            (!reasoning ||
+              selected.some((s) => passageText(s).toLowerCase() === passageText(reasoning).toLowerCase())),
+          confidence: d.confidence,
           negative: d.correct === false || d.dontKnow === true,
         });
+      // The host reveals feedback after submission. It can inform a later answer.
+      const reveal = d.explanation ?? d.committed;
+      if (typeof reveal === 'string' && d.questionType !== 'predict') tutorContext.push(reveal);
     } else if (m.role === 'user' && question && asText(m.content).trim()) {
-      answers.push({ id: m.id, prompt: question, answer: asText(m.content) });
+      const answer = asText(m.content);
+      record({ id: m.id, prompt: question, reasoning: answer, answer });
     }
   }
   for (const problem of problems.values()) {
@@ -188,16 +246,21 @@ export function validatePlan(result, chapter, candidates) {
       const contrary = candidates.filter(
         (c) => c.negative && prompts.has(passageText(c.prompt).toLowerCase()) && !ids.has(c.id),
       );
-      const cited = [...matched, ...contrary].map(({ id, source, prompt, answer, assisted, negative }) => ({
-        id,
-        source,
-        prompt,
-        answer,
-        assisted,
-        negative,
-      }));
+      const cited = [...matched, ...contrary].map(
+        ({ id, source, prompt, answer, assisted, negative, selectionOnly }) => ({
+          id,
+          source,
+          prompt,
+          answer,
+          assisted,
+          negative,
+          selectionOnly,
+        }),
+      );
       const independent =
-        o.status === 'demonstrated' && cited.length && !cited.some((c) => c.negative || c.assisted);
+        o.status === 'demonstrated' &&
+        cited.some((c) => !c.selectionOnly) &&
+        !cited.some((c) => c.negative || c.assisted);
       return {
         id: i + 1 + '.' + (k + 1),
         section: i,

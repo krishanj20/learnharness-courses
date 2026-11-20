@@ -144,6 +144,11 @@ function quiz(id, prompt, answer, correct = true) {
     },
   };
 }
+function reasonedQuiz(id, prompt, selected, reasoning) {
+  const question = quiz(id, prompt, selected);
+  question.details.thinking = reasoning;
+  return question;
+}
 const checkVariance = 'How does volatility enter the Sharpe ratio?';
 const checkSize = 'What limits the size that can earn excess return?';
 const linked = [
@@ -219,7 +224,12 @@ test('recommends Skip only on independent native evidence for every objective an
     const h = host(
       t,
       [chapter(sections)],
-      [session('q', [quiz('a', checkVariance, 'Divides excess return by volatility')]), practice(outcome)],
+      [
+        session('q', [
+          reasonedQuiz('a', checkVariance, 'Denominator', 'Divides excess return by volatility'),
+        ]),
+        practice(outcome),
+      ],
       linked,
     );
     h.reply((input) => {
@@ -231,7 +241,7 @@ test('recommends Skip only on independent native evidence for every objective an
     const ch = (await h.call('course')).chapters[0];
     assert.equal(ch.recommendation.choice, outcome === 'solved' ? 'Skip' : 'Cover');
     assert.deepEqual(ch.recommendation.gaps, outcome === 'solved' ? [] : ['2.1']);
-    assert.equal(ch.objectives[0].evidence[0].answer, 'Divides excess return by volatility');
+    assert.equal(ch.objectives[0].evidence[0].answer, 'Denominator\nDivides excess return by volatility');
     if (outcome === 'solvedWithHints') assert.ok(ch.objectives[1].uncertainEvidence[0].assisted);
   }
 });
@@ -264,7 +274,16 @@ test('diagnostic answer survives failed grading and restart and updates only its
   const h = host(
     t,
     [chapter(sections)],
-    [session('q', [quiz('v', checkVariance, 'Use volatility as denominator.')])],
+    [
+      session('q', [
+        reasonedQuiz(
+          'v',
+          checkVariance,
+          'Denominator',
+          'For equal excess returns, higher volatility reduces the ratio.',
+        ),
+      ]),
+    ],
   );
   h.reply((i) => plan(i, [['q/v']]));
   await h.call('prepare');
@@ -664,7 +683,12 @@ test('native Teaching scopes the first diagnostic to the book and credits only d
     reason: 'Applied the concept to an unfamiliar case.',
   });
   sessions[0].messages.push(
-    quiz('correct', 'How does risk change?', 'Dispersion increases'),
+    reasonedQuiz(
+      'correct',
+      'How does risk change?',
+      'It rises',
+      'The observations spread further from their mean.',
+    ),
     quiz('wrong', 'How does capacity change?', 'It doubles', false),
   );
   h.reply({ demonstrated: [award('1.1', 'correct'), award('1.2', 'invented-id'), award('2.1', 'wrong')] });
@@ -681,17 +705,116 @@ test('native Teaching scopes the first diagnostic to the book and credits only d
   const secondSource = JSON.parse((await h.tools('second')[0].execute()).content[0].text);
   assert.match(secondSource.assigned.pages[0].text, /Scale by risk/);
   assert.doesNotMatch(secondSource.assigned.pages[0].text, /Volatility/);
-  sessions[1].messages.push(quiz('explain', 'How is the ratio computed?', 'Divide excess return by risk.'));
+  sessions[1].messages.push(
+    reasonedQuiz('explain', 'How is the ratio computed?', 'Risk-adjusted', 'Divide excess return by risk.'),
+  );
   h.reply({ demonstrated: [award('1.2', 'explain')] });
   await h.call('teaching-check', { sessionId: 'second' });
   assert.equal((await state()).section, 1);
   assert.notEqual((await state()).readSection, 1);
   sessions[0].messages.push(
-    quiz('transferred', 'Explain capacity in a new case.', 'Market impact constrains position size.'),
+    reasonedQuiz(
+      'transferred',
+      'Explain capacity in a new case.',
+      'Capacity binds',
+      'Market impact constrains position size.',
+    ),
   );
   h.reply({ demonstrated: [award('2.1', 'transferred')] });
   await h.call('teaching-check', { sessionId: 'native' });
   assert.match(await h.call('teaching-check', { sessionId: 'second' }), /3 of 3.*chapter exam/);
   assert.equal((await state()).phase, 'exam-ready');
   assert.equal((await h.call('course')).chapters[0].lessonsDone, 2);
+});
+
+test('a choice or a supplied explanation cannot skip the lesson; a fresh unaided application can', async (t) => {
+  const sessions = [];
+  const h = host(t, [chapter(solo)], sessions);
+  h.reply((i) => plan(i));
+  await h.call('prepare');
+  const first = await h.call('teaching-start', { key: '1.1' });
+  const native = { id: 'diagnostic', title: first.provisional, kind: 'teach', messages: [] };
+  sessions.push(native);
+  await h.call('teaching-bind', { key: '1.1', sessionId: native.id });
+  const check = () => h.call('teaching-check', { sessionId: native.id });
+  const credit = (id) => ({
+    demonstrated: [{ point: '1.1', answerIds: [id], reason: 'Identified the denominator.' }],
+  });
+  const choice = quiz('choice', checkVariance, 'Denominator');
+  choice.details.confidence = 100;
+  native.messages.push(choice);
+  h.reply((input) => {
+    assert.equal(input.answers[0].selectionOnly, true);
+    assert.equal(input.answers[0].confidence, 100);
+    return credit('choice');
+  });
+  assert.match(await check(), /0 of 1.*fresh problem/i);
+  const supplied = 'The wider spread doubles volatility and halves the ratio.';
+  native.messages.push(
+    {
+      role: 'assistant',
+      content: [
+        { type: 'toolCall', id: 'hint', name: 'send_to_user', arguments: { message: 'Hint: ' + supplied } },
+      ],
+    },
+    { role: 'toolResult', toolName: 'send_to_user', toolCallId: 'hint' },
+    {
+      role: 'assistant',
+      content: [
+        {
+          type: 'toolCall',
+          id: 'second',
+          name: 'probe',
+          arguments: { question: checkVariance, explanation: 'Hidden current quiz key.' },
+        },
+      ],
+    },
+    { ...reasonedQuiz('copied', checkVariance, 'Denominator', supplied), toolCallId: 'second' },
+  );
+  h.reply((input) => {
+    const copied = input.answers.at(-1);
+    assert.match(copied.tutorContext, /Hint: The wider spread/);
+    assert.doesNotMatch(copied.tutorContext, /Hidden current quiz key/);
+    assert.equal(copied.assisted, true);
+    return credit('copied');
+  });
+  assert.match(await check(), /0 of 1.*fresh problem/i);
+  native.messages.push(
+    reasonedQuiz(
+      'repeat',
+      checkVariance,
+      'Denominator',
+      'I can restate the last worked answer in my own words.',
+    ),
+  );
+  h.reply((input) => {
+    assert.equal(input.answers.at(-1).assisted, true);
+    return credit('repeat');
+  });
+  assert.match(await check(), /0 of 1.*fresh problem/i);
+  native.messages.push(
+    reasonedQuiz(
+      'new',
+      'What if volatility triples at constant excess return?',
+      'It falls',
+      'The numerator is fixed and the denominator triples, so the new ratio is one third.',
+    ),
+  );
+  h.reply((input) => {
+    assert.ok(!input.answers.at(-1).assisted);
+    return credit('new');
+  });
+  assert.match(await check(), /1 of 1.*chapter exam/);
+  assert.equal((await h.call('chat')).phase, 'exam-ready');
+});
+
+test('chapter placement treats a confident option selection without reasoning as uncertain', async (t) => {
+  const picked = quiz('picked', checkVariance, 'Denominator');
+  picked.details.confidence = 100;
+  const h = host(t, [chapter(solo)], [session('q', [picked])]);
+  h.reply((i) => plan(i, [['q/picked']]));
+  await h.call('prepare');
+  const ch = (await h.call('course')).chapters[0];
+  assert.equal(ch.recommendation.choice, 'Cover');
+  assert.equal(ch.objectives[0].uncertainEvidence[0].selectionOnly, true);
 });

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { before, describe, it } from 'node:test';
 import { extractBook } from '../src/pdf.mjs';
+import { pointReadings } from '../src/passages.mjs';
 import { planningSource, sectionContext } from '../src/model.mjs';
 
 // The publisher's draft is a local acceptance input. Keep it outside the repository.
@@ -54,6 +55,27 @@ describe('14 August 2024 EQI draft', { skip: !path && 'Set EQI_PDF to the local 
       expectedChapters.map(([title, page]) => [titleWords(title), page]),
     );
     assert.ok(book.chapters.at(-1).end < 463, 'Both copies of the Index bookmark should be excluded');
+  });
+
+  it('assigns the Chapter 2 introduction and each subheading its own physical and printed boundaries', () => {
+    const chapter = book.chapters[1],
+      section = chapter.sections[0];
+    const readings = pointReadings(section, 0, chapter.start, book.pages);
+    assert.deepEqual(
+      readings.map((p) => [p.title, p.start, p.end]),
+      [
+        ['Definitions', 57, 59],
+        ['Excess Returns', 59, 60],
+        ['Log Returns', 60, 62],
+        ['Estimating Prices and Returns', 62, 65],
+        ['Stylized Facts', 65, 69],
+      ],
+    );
+    assert.deepEqual(
+      [readings[0].firstLabel, readings[0].lastLabel, readings[0].stop],
+      ['29', '31', 'Excess Returns'],
+    );
+    assert.equal(readings[1].beginAt, 'Excess Returns');
   });
 
   it('assigns printed pp. 7–9 to §1.1 and stops where §1.2 begins on physical page 37', () => {

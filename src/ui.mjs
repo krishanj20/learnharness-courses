@@ -1,5 +1,4 @@
 import { openTeaching } from './open-teaching.mjs';
-import { points } from './passages.mjs';
 import { GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import worker from 'bundled-pdf-worker';
 import { openPdf, extractBook } from './pdf.mjs';
@@ -209,6 +208,10 @@ export function activate(ctx) {
         };
         body.append(add, input);
         if (!list.length) body.append(el('p', 'Choose a book as a PDF to create your first course.'));
+        const suggested = list
+          .filter((item) => item.practiceOffer)
+          .sort((a, b) => a.practiceOffer.priority - b.practiceOffer.priority)[0];
+        if (suggested) body.append(practiceSuggestion(suggested.practiceOffer, suggested));
         for (const item of list) {
           const row = el('article', null, 'bc-card');
           row.append(
@@ -252,6 +255,7 @@ export function activate(ctx) {
         reset();
         navigation(button('Back to all courses', library));
         heading('h1', course.title);
+        if (course.practiceOffer) body.append(practiceSuggestion(course.practiceOffer));
         if (course.warnings?.length) {
           const d = el('details');
           d.append(
@@ -417,45 +421,49 @@ export function activate(ctx) {
         }
         body.append(panel);
       }
-      async function launchPoint(point) {
+      async function launchPoint(point, wholeSection = false) {
         if (!course.chapters[index].objectives) await prepare(index);
-        await openTeaching(ctx, { id: course.id, chapter: index, key: point.key });
+        await openTeaching(ctx, { id: course.id, chapter: index, key: point.key, wholeSection });
       }
       function nextPoint(ch) {
-        const all = points(ch.sections[chat.section], chat.section);
+        const all = ch.sections[chat.section].readings;
         return all.find((p) => !ch.teaching?.[p.key]?.done) ?? all[0];
       }
-      function startButton(ch) {
-        const point = nextPoint(ch),
-          session = ch.teaching?.[point.key]?.sessionId;
+      function startButton(ch, point, wholeSection = false) {
+        const session = ch.teaching?.[point.key]?.sessionId;
         const label = session
           ? 'Resume Teaching · ' + point.title
           : chat.readSection === chat.section
             ? 'Start Teaching · ' + point.title
-            : 'I’ve read this section · Start Teaching';
-        return button(label, () => launchPoint(point), true);
+            : wholeSection || ch.sections[chat.section].readings.length === 1
+              ? 'I’ve read this section · Start Teaching'
+              : 'I’ve read ' + point.title + ' · Start Teaching';
+        return button(label, () => launchPoint(point, wholeSection), true);
       }
       function reading(ch, s) {
         const box = el('section', null, 'bc-reading');
-        box.append(el('h2', 'Read ' + (s.number ? '§' + s.number + ' · ' : '') + s.title), el('p', span(s)));
-        if (s.includesIntroduction)
+        const point = nextPoint(ch);
+        const label = (s.number ? '§' + s.number + ' · ' : '') + point.title;
+        box.append(el('h2', 'Read ' + label), el('p', span(point)));
+        if (s.includesIntroduction && point === s.readings[0])
           box.append(
             el(
               'p',
               'Start with the chapter introduction before ' + (s.number ? '§' + s.number : s.title) + '.',
             ),
           );
-        if (s.stop) box.append(el('p', 'Stop at “' + s.stop + '”.'));
+        if (point.beginAt) box.append(el('p', 'Begin at “' + point.beginAt + '”.'));
+        if (point.stop) box.append(el('p', 'Stop at “' + point.stop + '”.'));
         if (s.uncertain)
           box.append(
             el('p', 'Check the heading on the original page. The importer could not match it exactly.'),
           );
-        if (s.subsections?.length) box.append(el('p', s.subsections.map((x) => x.title).join(' · ')));
-        box.append(button('Open assigned pages', () => openReader(s.start, s.end)));
+        box.append(button('Open assigned pages', () => openReader(point.start, point.end, null, point)));
+        if (s.readings.length > 1)
+          box.append(button('Read whole section', () => openReader(s.start, s.end, null, point, true)));
         if (!chat.pending) {
-          box.append(startButton(ch));
-          const point = nextPoint(ch),
-            entry = ch.teaching?.[point.key];
+          box.append(startButton(ch, point));
+          const entry = ch.teaching?.[point.key];
           if (entry?.sessionId)
             box.append(
               button('Check teaching progress', async () => {
@@ -467,7 +475,7 @@ export function activate(ctx) {
         }
         body.append(box);
       }
-      async function openReader(start, end, lessonIndex = null) {
+      async function openReader(start, end, lessonIndex = null, point = null, wholeSection = false) {
         const doc = await pdf();
         const labels = await doc.getPageLabels();
         reset();
@@ -475,16 +483,23 @@ export function activate(ctx) {
           button(lessonIndex === 'exam' ? 'Back to exam' : 'Back to lesson', () => paintChat(lessonIndex)),
           backToChapters(),
         );
-        const ch = course.chapters[index],
-          assigned = ch.sections[chat.section];
-        if (
-          ['reading', 'discussion'].includes(chat.phase) &&
-          !chat.pending &&
-          (lessonIndex === null || lessonIndex === chat.section) &&
-          start === assigned.start &&
-          end === assigned.end
-        )
-          body.querySelector('nav').append(startButton(ch));
+        const ch = course.chapters[index];
+        if (point) {
+          const stop = wholeSection ? ch.sections[chat.section].stop : point.stop;
+          body.append(
+            el(
+              'p',
+              (wholeSection ? ch.sections[chat.section].title : point.title) +
+                (stop ? ' · Stop at “' + stop + '”.' : ''),
+            ),
+          );
+          if (
+            !chat.pending &&
+            ['reading', 'discussion'].includes(chat.phase) &&
+            (lessonIndex === null || lessonIndex === chat.section)
+          )
+            body.querySelector('nav').append(startButton(ch, point, wholeSection));
+        }
         closeReader = await scrollReader(body, doc, labels, start, end);
         if (signal.aborted) closeReader();
       }
@@ -553,6 +568,75 @@ export function activate(ctx) {
         }
         body.append(panel);
       }
+      function practiceSuggestion(offer, item = null) {
+        const panel = el('section', null, 'bc-review-offer');
+        const label = offer.active
+          ? 'Resume practice'
+          : offer.priority === 2
+            ? 'One-week check'
+            : 'Suggested practice';
+        panel.append(
+          el('h2', label),
+          el('p', (item ? item.title + ' · ' : '') + 'Chapter ' + (offer.chapter + 1) + ' · ' + offer.skill),
+        );
+        panel.append(
+          button(offer.active ? 'Continue problem' : 'Try one problem', async () => {
+            if (item) course = await call('course', { id: item.id });
+            index = offer.chapter;
+            openPlan = false;
+            await loadChat();
+            await startReview(offer.objective);
+          }),
+        );
+        return panel;
+      }
+      function focusReview(id) {
+        const panel = body.querySelector('[data-review-objective="' + CSS.escape(id) + '"]');
+        panel?.focus();
+      }
+      async function startReview(id) {
+        const ch = course.chapters[index];
+        if (!ch.practice.find((p) => p.id === id)?.active) {
+          const o = ch.objectives.find((o) => o.id === id);
+          await act(
+            'review-start',
+            { objective: id, images: await images([o.page]) },
+            'Preparing a fresh practice problem…',
+          );
+        }
+        focusReview(id);
+      }
+      function reviewObjective(p) {
+        const panel = el('section', null, 'bc-objective-practice');
+        panel.dataset.reviewObjective = p.id;
+        panel.tabIndex = -1;
+        panel.append(el('h3', p.skill), el('p', 'Exam · ' + p.exam));
+        if (p.outcome) panel.append(el('p', 'Practice · ' + p.outcome));
+        if (p.dueAt) panel.append(el('p', 'One-week check · ' + new Date(p.dueAt).toLocaleDateString()));
+        const answer = async (data) => {
+          await act('review-answer', { objective: p.id, ...data }, 'Checking your reasoning…');
+          focusReview(p.id);
+        };
+        if (p.question) {
+          const history = p.active ? panel : el('details');
+          if (!p.active) {
+            history.append(el('summary', 'Last practice problem'));
+            panel.append(history);
+          }
+          markdown(history, p.question);
+          messages(history, p.messages);
+        }
+        if (!p.active)
+          panel.append(
+            button(p.priority === 2 ? 'Start one-week check' : 'Practise this objective', () =>
+              startReview(p.id),
+            ),
+          );
+        else if (p.pending)
+          panel.append(button('Retry saved practice answer', () => answer({ retry: true })));
+        else form(panel, 'Your practice answer', (text) => answer({ text }));
+        return panel;
+      }
       function paintChat(reviewLesson = null) {
         reset();
         const ch = course.chapters[index],
@@ -585,13 +669,19 @@ export function activate(ctx) {
           detail.append(el('summary', label + ' · ' + status));
           detail.open = i === reviewLesson;
           detail.append(
-            button('Read ' + label + ' · ' + span(unit), () => openReader(unit.start, unit.end, i)),
+            button('Read ' + label + ' · ' + span(unit), () =>
+              openReader(unit.start, unit.end, i, i === chat.section ? nextPoint(ch) : null, true),
+            ),
           );
-          for (const p of points(unit, i)) {
+          for (const p of unit.readings) {
             const entry = ch.teaching?.[p.key];
             const line = el('div', null, 'bc-subpoint');
             line.append(el('span', p.title + (entry?.done ? ' · Demonstrated' : '')));
             if (entry?.done) line.append(el('small', entry.done.reason));
+            if (unit.readings.length > 1)
+              line.append(
+                button('Read ' + p.title + ' · ' + span(p), () => openReader(p.start, p.end, i, p)),
+              );
             if (
               entry?.sessionId ||
               entry?.done ||
@@ -678,23 +768,7 @@ export function activate(ctx) {
         if (chat.phase === 'exam-next') body.append(button('Next exam question', exam, true));
         if (chat.phase === 'complete') {
           heading('h2', 'Chapter exam results');
-          for (const o of ch.objectives) {
-            const attempts = chat.results.filter((r) => r.objectives.includes(o.id));
-            body.append(
-              el(
-                'p',
-                o.skill +
-                  ' · ' +
-                  (attempts.some((r) => !r.assisted && r.fullyTested?.includes(o.id))
-                    ? 'Demonstrated independently'
-                    : attempts.some((r) => !r.assisted)
-                      ? 'Partly demonstrated independently'
-                      : attempts.length
-                        ? 'Practise again'
-                        : 'Not assessed'),
-              ),
-            );
-          }
+          for (const p of ch.practice) body.append(reviewObjective(p));
           for (const label of chat.exam.ungraded ?? []) body.append(el('p', label));
           for (const r of chat.results) {
             const d = el('details');

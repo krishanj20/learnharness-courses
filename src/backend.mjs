@@ -1,5 +1,7 @@
+import { practiceOffer, practiceSummary, registerReview } from './review.mjs';
 import { registerTeaching } from './native-teaching.mjs';
 import fs from 'node:fs';
+import { pointReadings } from './passages.mjs';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import {
@@ -81,18 +83,20 @@ export function activate(ctx) {
       id: c.id,
       title: c.title,
       warnings: c.warnings,
-      chapters: c.chapters.map(({ chat, ...ch }, i) => ({
+      practiceOffer: practiceOffer(c.chapters),
+      chapters: c.chapters.map(({ chat, reviews, ...ch }, i) => ({
         ...ch,
-        sections: ch.sections.map((s, j) =>
-          j === 0
-            ? {
-                ...s,
-                start: ch.start,
-                firstLabel: source.pages[ch.start - 1].label,
-                includesIntroduction: chapterOpening(source, source.chapters[i]).length > 0,
-              }
-            : s,
-        ),
+        practice: practiceSummary({ ...ch, chat, reviews }),
+        sections: ch.sections.map((s, j) => {
+          const start = j === 0 ? ch.start : s.start;
+          return {
+            ...s,
+            start,
+            firstLabel: source.pages[start - 1].label,
+            includesIntroduction: j === 0 && chapterOpening(source, source.chapters[i]).length > 0,
+            readings: pointReadings(s, j, start, source.pages),
+          };
+        }),
         needsPlan: needsPlan({ ...ch, chat }),
         phase: chat.phase,
         lessonsDone: ['reading', 'discussion'].includes(chat.phase) ? chat.section : ch.sections.length,
@@ -116,6 +120,7 @@ export function activate(ctx) {
           id,
           title: c.title,
           count: c.chapters.length,
+          practiceOffer: practiceOffer(c.chapters),
           prepared: c.chapters.filter((c) => c.objectives).length,
         };
       }),
@@ -280,7 +285,9 @@ export function activate(ctx) {
         fresh.chapters[chapter] = ch;
         save(id, fresh);
       };
+      const previousPhase = ch.chat.phase;
       await fn(ch, store);
+      if (previousPhase !== 'complete' && ch.chat.phase === 'complete') ch.chat.examCompletedAt = Date.now();
       ch.chat.rev++;
       store();
       return publicChat(ch.chat);
@@ -288,6 +295,7 @@ export function activate(ctx) {
       busy.delete(key);
     }
   }
+  registerReview(ctx, { edit, book, imageList });
   ctx.handle('prepare', (a) =>
     edit(a, async (ch) => {
       if (!needsPlan(ch)) return;

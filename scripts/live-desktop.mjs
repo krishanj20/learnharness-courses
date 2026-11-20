@@ -24,6 +24,7 @@ const puppeteerFile = env.COURSES_PUPPETEER || resolve.resolve('puppeteer-core',
 const { default: puppeteer } = await import(pathToFileURL(puppeteerFile));
 const hostOnly = process.argv.includes('--host-only');
 const syntheticOnly = process.argv.includes('--synthetic');
+const reviewPilot = process.argv.includes('--review-pilot');
 const scratch = await mkdtemp(path.join(os.tmpdir(), 'courses-desktop-'));
 const profile = path.join(scratch, 'profile');
 const data = path.join(profile, 'data');
@@ -254,7 +255,7 @@ try {
   await enableAndCheckHost();
   if (!hostOnly) {
     const { runCourseChecks, runSyntheticChecks } = await import('./live-course-checks.mjs');
-    const run = syntheticOnly ? runSyntheticChecks : runCourseChecks;
+    const run = reviewPilot ? (await import('./live-review-pilot.mjs')).runReviewPilot : syntheticOnly ? runSyntheticChecks : runCourseChecks;
     await run({
       page: () => page,
       selected,

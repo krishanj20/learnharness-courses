@@ -46,3 +46,16 @@ Courses SHALL open a regular LearnHarness Teaching session for each book subhead
 - **THEN** Courses opens that chapter and credits the subpoints demonstrated independently in saved answers
 - **AND** the next Teaching addresses an outstanding subpoint, or the chapter exam opens for study if all subpoints are demonstrated
 - **AND** an unanswered or incorrect question earns no mastery credit
+
+### Requirement: Reading and evidence at subheading granularity
+Courses SHALL assign the upcoming subheading with its physical and printed page boundaries and offer the entire section. Teaching SHALL receive page-labelled source text on opening and have access to original images of its assigned pages for notation and diagrams.
+
+#### Scenario: Definitions in EQI
+- **WHEN** the learner opens the first Chapter 2 subpoint
+- **THEN** its assignment includes the introduction on PDF page 57 and stops at Excess Returns on page 59
+- **AND** the entire section through page 69 remains available
+
+#### Scenario: Independent evidence
+- **WHEN** a learner selects a correct option without reasoning, or repeats a tutor-supplied solution
+- **THEN** the tutor asks for a fresh unaided application before a skip
+- **AND** an independently reasoned first response can earn immediate credit

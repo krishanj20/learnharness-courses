@@ -26,7 +26,16 @@ export async function openTeaching(ctx, address) {
     }
     if (!plan.started) {
       const key = 'lh.openingPrompt.' + id;
-      if (!sessionStorage.getItem(key)) {
+      const previous = sessionStorage.getItem(key);
+      let replace = previous == null;
+      if (previous) {
+        // A previous release may have reserved an opening without delivering it.
+        // The host preserves attempted openings and legacy raw text as learner drafts.
+        try {
+          replace = JSON.parse(previous)?.attempted === false;
+        } catch {}
+      }
+      if (replace) {
         const value = JSON.stringify({ text: plan.opening, attempted: false });
         sessionStorage.setItem(key, value);
         if (sessionStorage.getItem(key) !== value) throw Error('Could not hand the reading to Teaching.');

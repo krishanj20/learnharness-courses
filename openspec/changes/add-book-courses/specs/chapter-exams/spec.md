@@ -42,3 +42,11 @@ The tutor SHALL capture each attempt, support smaller steps on request or after 
 #### Scenario: Finish and resume
 - **WHEN** the learner exits midway through an exam and later finishes
 - **THEN** the original item, submitted work and hint position resume, and the summary identifies independently demonstrated objectives and objectives to revisit
+
+### Requirement: Follow-up practice and retention
+Courses SHALL offer a fresh problem on a weak or unassessed objective after the exam and on a returning course visit. It SHALL preserve exam results, unfinished practice and timing of independent work.
+
+#### Scenario: One-week check
+- **WHEN** at least seven days have passed after an independently solved objective
+- **THEN** the learner can take a fresh unaided check for that objective
+- **AND** delayed independent success is distinguished from guided work and immediate practice

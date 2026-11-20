@@ -42,6 +42,27 @@ function logicalReply(instruction, input) {
       }),
     };
   }
+  if (Array.isArray(input.previousQuestions)) {
+    const problems = [
+      [
+        'A fund rises 10% and then falls 10%. Where does 100 finish, and why?',
+        '99, from 100 × 1.10 × 0.90. The second percentage applies to 110.',
+      ],
+      [
+        'What gain restores the original value after a 20% loss? Explain using gross returns.',
+        '25%, because 0.80 × 1.25 = 1.',
+      ],
+    ];
+    const [question, rubric] = problems.find(([q]) => !input.previousQuestions.includes(q)) ?? problems[0];
+    return {
+      verifiable: true,
+      question,
+      rubric,
+      check: 'Multiply the two period gross returns.',
+      objectives: [input.objectives[0].id],
+      fullyTested: [input.objectives[0].id],
+    };
+  }
   if (instruction.includes('verifiable')) {
     return {
       question: 'Which assumption does the chapter use, and what follows from it?',
@@ -103,28 +124,63 @@ export async function startFixture() {
         const sourceResult = body.messages.find(
           (m) => m.role === 'tool' && JSON.stringify(m.content).includes('chapterMap'),
         );
-        const returns = JSON.stringify(prompt).includes('Returns: Properties and Models');
-        const correct = returns ? 'Ten percent' : 'Portable claim';
+        const opening = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        const definitions = opening.includes('Teach me “Definitions”');
+        const excess = opening.includes('Teach me “Excess Returns”');
+        const pageRequested = body.messages.some((m) =>
+          m.tool_calls?.some((t) => t.function.name === 'course_page'),
+        );
+        const pageVisible = body.messages.some(
+          (m) => Array.isArray(m.content) && m.content.some((p) => p.type === 'image_url'),
+        );
         const answered = body.messages.some((m) => m.role === 'tool' && m.tool_call_id === 'native-probe');
         if (answered) {
           delta = { role: 'assistant', content: 'Return to Courses to check your progress.' };
           finish = 'stop';
         } else {
-          const name = sourceResult ? 'probe' : 'course_reading';
-          const args = sourceResult
-            ? {
-                question: returns
-                  ? 'What is the simple return when the price rises from 100 to 110?'
-                  : 'Which feature lets a security change hands?',
-                options: [{ label: correct }, { label: returns ? 'One percent' : 'Fixed owner' }],
-                explanation: returns
-                  ? 'Divide the gain of ten by the initial hundred.'
-                  : 'The claim can pass to another holder.',
-                correctAnswer: correct,
-              }
-            : {};
+          const name = !sourceResult
+            ? 'course_reading'
+            : definitions && !pageRequested
+              ? 'course_page'
+              : 'probe';
+          const correct = definitions ? 'Ten percent' : excess ? 'Two percentage points' : 'Portable claim';
+          const question = definitions
+            ? 'On PDF p. 59, what is the simple return when the price rises from 100 to 110?'
+            : excess
+              ? 'How much did a portfolio earning 5% outperform a 3% benchmark?'
+              : 'Which feature lets a security change hands?';
+          const args =
+            name === 'course_page'
+              ? { page: 59 }
+              : name === 'probe'
+                ? {
+                    question,
+                    options: [
+                      { label: correct },
+                      {
+                        label: definitions
+                          ? 'One percent'
+                          : excess
+                            ? 'Eight percentage points'
+                            : 'Fixed owner',
+                      },
+                    ],
+                    correctAnswer: correct,
+                    explanation: definitions
+                      ? 'Divide the gain by the original price.'
+                      : excess
+                        ? 'Subtract the benchmark from the portfolio return.'
+                        : 'The claim can pass to another holder.',
+                  }
+                : {};
           delta = {
             role: 'assistant',
+            ...(excess && name === 'probe'
+              ? {
+                  content:
+                    'Subtract the benchmark from the portfolio return. The answer is two percentage points.',
+                }
+              : {}),
             tool_calls: [
               {
                 index: 0,
@@ -136,7 +192,14 @@ export async function startFixture() {
           };
           finish = 'tool_calls';
         }
-        requests.push({ native: true, sourceRead: !!sourceResult });
+        requests.push({
+          native: true,
+          sourceRead: !!sourceResult,
+          definitions,
+          sourceInOpening: opening.includes('PDF p. 59') && opening.includes('ri(1)'),
+          pageRequested,
+          pageVisible,
+        });
       } else {
         const rawInput = typeof prompt === 'string' ? prompt : prompt?.find((x) => x.type === 'text')?.text;
         let input;
