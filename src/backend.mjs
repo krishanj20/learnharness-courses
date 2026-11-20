@@ -411,7 +411,7 @@ export function activate(ctx) {
         if (a.action === 'answer' && (typeof a.text !== 'string' || !a.text.trim()))
           throw Error('Enter an answer.');
         if (a.action === 'answer') c.messages.push(msg('learner', a.text.trim()));
-        c.pending = { action: a.action, text: a.text?.trim() };
+        c.pending = { action: a.action, text: a.text?.trim(), submittedAt: Date.now() };
         c.rev++;
         checkpoint();
       } else if (a.action !== 'retry') throw Error('Retry the saved answer to continue.');
@@ -439,6 +439,7 @@ export function activate(ctx) {
         item.assisted = assisted;
         if (r.solved) {
           c.results.push({
+            solvedAt: c.pending.submittedAt ?? Date.now(),
             question: item.question,
             answer: c.pending.text,
             objectives: item.objectives,

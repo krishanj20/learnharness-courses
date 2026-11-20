@@ -19,6 +19,12 @@ export async function runCourseChecks({
   stop,
   launch,
 }) {
+  async function enterReasoning(reasoning) {
+    const selector = '[data-testid="thinking-field"] [role="textbox"]';
+    await page().focus(selector);
+    await page().keyboard.sendCharacter(reasoning);
+    await page().waitForFunction((s, text) => document.querySelector(s)?.textContent.includes(text), {}, selector, reasoning);
+  }
   const call = async (operation, input) =>
     (await api('/api/plugins/book-courses/call', 'POST', { operation, input })).result;
   const id = createHash('sha256')
@@ -190,8 +196,7 @@ export async function runCourseChecks({
   );
   const nativeId = new URL(page().url()).pathname.split('/').at(-1);
   await click('Ten percent');
-  await page().type(
-    '[data-testid="thinking-field"] [role="textbox"]',
+  await enterReasoning(
     'Divide the price change by the initial price, so 10/100 gives ten percent.',
   );
   await click('Submit answer');
@@ -219,8 +224,7 @@ export async function runCourseChecks({
   );
   await see('How much did a portfolio earning 5%', '[data-testid="question-dock"]');
   await click('Two percentage points');
-  await page().type(
-    '[data-testid="thinking-field"] [role="textbox"]',
+  await enterReasoning(
     'Subtract the benchmark from the portfolio return. The answer is two percentage points.',
   );
   await click('Submit answer');
@@ -320,6 +324,12 @@ export async function runSyntheticChecks({
   stop,
   launch,
 }) {
+  async function enterReasoning(reasoning) {
+    const selector = '[data-testid="thinking-field"] [role="textbox"]';
+    await page().focus(selector);
+    await page().keyboard.sendCharacter(reasoning);
+    await page().waitForFunction((s, text) => document.querySelector(s)?.textContent.includes(text), {}, selector, reasoning);
+  }
   const call = async (operation, input) =>
     (await api('/api/plugins/book-courses/call', 'POST', { operation, input })).result;
   await click('Courses');

@@ -33,7 +33,27 @@ export function nativeAnswers(messages) {
     tutorContext = [],
     current;
 
-  function record(answer) {
+  // Stock Teaching persists side-chat updates after a submitted probe. Their
+  // timestamps tell us which help the learner could already see at submission.
+  const sideHints = [];
+  for (const [index, m] of messages.entries()) {
+    if (m.role !== 'custom' || m.customType !== 'side-question') continue;
+    const updates = m.details?.updates ?? m.details?.snapshot;
+    if (!Array.isArray(updates)) continue;
+    for (const update of updates) {
+      if (update?.role === 'assistant' && update.text?.trim())
+        sideHints.push({ index, at: Date.parse(update.at), text: update.text });
+    }
+  }
+  function record(answer, index, at) {
+    for (const hint of sideHints) {
+      if (hint.used) continue;
+      const seen = Number.isFinite(at) && Number.isFinite(hint.at) ? hint.at <= at : hint.index < index;
+      if (seen) {
+        tutorContext.push(hint.text);
+        hint.used = true;
+      }
+    }
     const guidance = tutorContext.join('\n');
     if (guidance) {
       answer.tutorContext = guidance;
@@ -56,7 +76,7 @@ export function nativeAnswers(messages) {
     tutorContext = [];
     question = '';
   }
-  for (const m of messages) {
+  for (const [index, m] of messages.entries()) {
     if (m.role === 'assistant') {
       const prose = [];
       if (typeof m.content === 'string') prose.push(m.content);
@@ -86,13 +106,6 @@ export function nativeAnswers(messages) {
       continue;
     }
     const d = m.details ?? {};
-    if (m.role === 'custom' && m.customType === 'side-question') {
-      const updates = d.updates ?? d.snapshot;
-      if (Array.isArray(updates))
-        for (const update of updates)
-          if (update?.role === 'assistant' && typeof update.text === 'string') tutorContext.push(update.text);
-      continue;
-    }
     if (m.role === 'custom' && m.customType === 'practice-thinking') {
       const problem = problems.get(d.problemCallId);
       if (problem && typeof d.text === 'string' && d.text.trim())
@@ -127,13 +140,13 @@ export function nativeAnswers(messages) {
               selected.some((s) => passageText(s).toLowerCase() === passageText(reasoning).toLowerCase())),
           confidence: d.confidence,
           negative: d.correct === false || d.dontKnow === true,
-        });
+        }, index, d.answeredAt ? Date.parse(d.answeredAt) : m.timestamp);
       // The host reveals feedback after submission. It can inform a later answer.
       const reveal = d.explanation ?? d.committed;
       if (typeof reveal === 'string' && d.questionType !== 'predict') tutorContext.push(reveal);
     } else if (m.role === 'user' && question && asText(m.content).trim()) {
       const answer = asText(m.content);
-      record({ id: m.id, prompt: question, reasoning: answer, answer });
+      record({ id: m.id, prompt: question, reasoning: answer, answer }, index, m.timestamp);
     }
   }
   for (const problem of problems.values()) {

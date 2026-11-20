@@ -9,7 +9,7 @@ const week = 7 * 86400000;
 const epoch = Date.UTC(2026, 10, 20, 12);
 const id = 'a'.repeat(64);
 const skill = 'Calculate the compounded return and explain the result.';
-function learner(t, { dated = true, independent = false, partial = false, complete = true } = {}) {
+function learner(t, { dated = true, independent = false, solvedAt, partial = false, complete = true } = {}) {
   t.mock.timers.enable({ apis: ['Date'], now: epoch });
   const root = mkdtempSync(join(tmpdir(), 'learnharness-review-'));
   t.after(() => rmSync(root, { force: true, recursive: true }));
@@ -48,6 +48,7 @@ function learner(t, { dated = true, independent = false, partial = false, comple
           fullyTested: partial ? [] : ['1.1'],
           assisted: !independent,
           answer: 'A worked calculation.',
+          solvedAt,
         },
       ],
       ...(dated ? { examCompletedAt: epoch } : {}),
@@ -166,4 +167,14 @@ test('legacy independently completed exams establish a dated baseline, and revie
   await h.call('review-answer', { text: '100 becomes 96.' });
   assert.equal(h.practice().outcome, 'Demonstrated independently in practice');
   assert.equal(h.practice().dueAt, epoch + week);
+});
+
+test('a multi-day exam dates retrieval from the last independent solution of that objective', async (t) => {
+  const h = learner(t, { independent: true, solvedAt: epoch - week });
+  assert.equal(h.practice().dueAt, epoch);
+  h.question();
+  await h.call('review-start');
+  h.reply(success);
+  await h.call('review-answer', { text: 'Multiplying gives 0.96, a loss of four percent.' });
+  assert.equal(h.practice().outcome, 'Demonstrated independently after a week');
 });

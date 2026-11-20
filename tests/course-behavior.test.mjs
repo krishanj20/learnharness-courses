@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { nativeAnswers } from '../src/learning.mjs';
 import { activate } from '../src/backend.mjs';
 
 const volatility = 'Volatility measures the dispersion of excess returns.';
@@ -817,4 +818,20 @@ test('chapter placement treats a confident option selection without reasoning as
   const ch = (await h.call('course')).chapters[0];
   assert.equal(ch.recommendation.choice, 'Cover');
   assert.equal(ch.objectives[0].uncertainEvidence[0].selectionOnly, true);
+});
+
+test('a helper update persisted after a native probe counts only if visible before submission', () => {
+  const explanation = 'Multiply both gross returns to account for compounding.';
+  const answer = reasonedQuiz('answered', 'Explain the calculation.', 'Multiply', explanation);
+  answer.details.answeredAt = '2026-11-20T10:01:00Z';
+  const marker = (at) => ({
+    role: 'custom', customType: 'side-question',
+    details: { updates: [{ role: 'assistant', at, text: explanation }] },
+  });
+  const [before] = nativeAnswers([answer, marker('2026-11-20T10:00:00Z')]);
+  assert.equal(before.assisted, true);
+  assert.equal(before.tutorContext, explanation);
+  const [after] = nativeAnswers([answer, marker('2026-11-20T10:02:00Z')]);
+  assert.equal(after.assisted, undefined);
+  assert.equal(after.tutorContext, undefined);
 });

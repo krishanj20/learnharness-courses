@@ -10,6 +10,11 @@ function examOutcome(results, id) {
   return attempts.length ? 'Practise again' : 'Not assessed';
 }
 
+function examBaseline(chat, id) {
+  const last = chat.results.findLast((r) => !r.assisted && r.fullyTested?.includes(id));
+  return last?.solvedAt ?? chat.examCompletedAt;
+}
+
 export function practiceSummary(ch, now = Date.now()) {
   if (ch.chat.phase !== 'complete') return [];
   return (ch.objectives ?? []).map((o) => {
@@ -19,7 +24,7 @@ export function practiceSummary(ch, now = Date.now()) {
     const active = !!last && !last.finishedAt;
     const finished = active ? attempts.at(-2) : last;
     const independent = finished ? !finished.assisted : exam === 'Demonstrated independently';
-    const since = finished?.finishedAt ?? ch.chat.examCompletedAt;
+    const since = finished?.finishedAt ?? examBaseline(ch.chat, o.id);
     const dueAt = independent && since && !finished?.delayedSuccess ? since + week : null;
     // Undated legacy exams can supply a skill baseline, but cannot prove a week elapsed.
     const priority = active ? 0 : !independent ? 1 : dueAt && dueAt <= now ? 2 : !since ? 3 : null;
@@ -94,7 +99,7 @@ export function registerReview(ctx, { edit, book, imageList }) {
       if (previous.some((q) => normalise(q) === normalise(item.question)))
         throw Error('The tutor repeated an earlier problem. Try preparing a new one.');
       const startedAt = Date.now();
-      const baseline = last?.finishedAt ?? ch.chat.examCompletedAt;
+      const baseline = last?.finishedAt ?? examBaseline(ch.chat, objective.id);
       const independentlySolved = last
         ? !last.assisted
         : examOutcome(ch.chat.results, objective.id) === 'Demonstrated independently';
