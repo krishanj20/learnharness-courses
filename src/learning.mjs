@@ -270,6 +270,8 @@ export function verifiedItem(output, exercise, objectives, hasImages = false) {
     solution,
     check: output.check,
     objectives: ids,
+    fullyTested: ids.filter((id) => Array.isArray(output.fullyTested) && output.fullyTested.includes(id)),
+    testedSkill: hasText(output.testedSkill) ? output.testedSkill : question,
     page: exercise?.page ?? objectives.find((o) => o.id === ids[0]).page,
     endPage: exercise?.endPage,
     number: exercise?.id,

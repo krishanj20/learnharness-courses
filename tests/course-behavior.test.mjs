@@ -190,6 +190,23 @@ function practice(outcome) {
     { id: 'concluded', role: 'toolResult', toolName: 'conclude', toolCallId: 'conclude1', isError: false },
   ]);
 }
+test('a partial import survives a restart and retry publishes one complete local PDF', async (t) => {
+  const h = host(t);
+  const bytes = Buffer.from('a book imported in two chunks');
+  const id = createHash('sha256').update(bytes).digest('hex');
+  const upload = (offset, data) => h.call('upload', { id, offset, data: data.toString('base64') });
+  const first = bytes.subarray(0, 9);
+  assert.equal(await upload(0, first), first.length);
+  h.restart();
+  assert.equal((await h.call('list')).some((c) => c.id === id), false);
+  assert.equal(await upload(0, first), first.length);
+  assert.equal(await upload(first.length, bytes.subarray(first.length)), bytes.length);
+  await h.call('import', { id, source: h.source });
+  await h.call('import', { id, source: h.source });
+  assert.equal((await h.call('list')).filter((c) => c.id === id).length, 1);
+  assert.deepEqual(Buffer.from((await h.call('pdf', { id })).data, 'base64'), bytes);
+});
+
 test('recommends Skip only on independent native evidence for every objective and preserves source identities', async (t) => {
   for (const outcome of ['solved', 'solvedWithHints']) {
     const h = host(
@@ -392,7 +409,9 @@ test('book exam preserves provenance, resumes scaffold position and credits a fr
   h.reply((i) => {
     assert.ok(i.entry.transfer);
     assert.equal(i.entry.previous, question);
-    return verification();
+    assert.equal(i.reading, i.entry.previousRubric);
+    assert.equal(i.objectives[0].skill, i.entry.testedSkill);
+    return { ...verification(), fullyTested: ['1.1'] };
   });
   const transfer = await h.call('exam');
   assert.ok(transfer.exam.current.transfer);
@@ -406,6 +425,11 @@ test('book exam preserves provenance, resumes scaffold position and credits a fr
     text: 'I used a direct argument with two equally likely outcomes.',
   });
   assert.equal(result.phase, 'complete');
+  assert.deepEqual(
+    result.results[1].fullyTested,
+    [],
+    'A transfer on part of an objective cannot establish the whole objective',
+  );
   assert.deepEqual(
     result.results.map((r) => r.assisted),
     [true, false],

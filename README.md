@@ -36,4 +36,4 @@ The public fixtures include small synthetic books with a shared section page, a 
 EQI_PDF="/path/to/EQI_20240814.pdf" npm test
 ```
 
-The [book verification](verification/book.md) documents comparisons with the original PDF. The [stock desktop checks](report/verification-live.md) distinguish scripted model tests from live tutor observations. See the [OpenSpec proposal](openspec/changes/add-book-courses/proposal.md) for the feature requirements.
+The [book verification](verification/book.md) documents comparisons with the original PDF. The [curriculum audit](verification/curriculum.md) maps the saved example course to all 14 chapters. The [stock desktop checks](report/verification-live.md) distinguish scripted model tests from live tutor observations. See the [OpenSpec proposal](openspec/changes/add-book-courses/proposal.md) for the feature requirements.

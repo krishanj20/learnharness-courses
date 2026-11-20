@@ -107,7 +107,9 @@ export async function runCourseChecks({
   await call('prepare', { id, chapter: 2 });
   assert.ok(
     fixture.requests.some((r) =>
-      r.priorAnswers?.some((a) => a.answer === learnerAnswer && a.id === 'course_test_teach/answer'),
+      r.priorAnswers?.some(
+        (a) => a.answer === learnerAnswer && a.id === 'course_test_teach/answer',
+      ),
     ),
   );
   await observe(
@@ -131,7 +133,17 @@ export async function runCourseChecks({
   }
   for (const index of [0, 1]) {
     const addr = await examReady(index);
-    const first = await call('exam', addr);
+    let first;
+    if (index === 1) {
+      await click(title);
+      await click('2. ' + course.chapters[index].title);
+      await click('Start chapter exam');
+      await see('Book exercise 2.1', '.book-courses');
+      first = await call('chat', addr);
+      assert.ok(fixture.visualExamExercises.includes('2.1'), 'Exercise 2.1 sent a page image');
+      await click('View source page');
+      await page().waitForSelector('canvas[aria-label="Original PDF page 99"]');
+    } else first = await call('exam', addr);
     assert.equal(first.exam.current.origin, index === 0 ? 'Tutor-written' : 'Book exercise');
     if (index === 1) assert.equal(first.exam.current.number, '2.1');
     let state = await call('turn', {

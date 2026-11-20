@@ -404,6 +404,8 @@ export function activate(ctx) {
             question: item.question,
             answer: c.pending.text,
             objectives: item.objectives,
+            fullyTested: item.fullyTested ?? [],
+            testedSkill: item.testedSkill ?? item.question,
             assisted,
             transfer: !!item.transfer,
             origin: item.origin,
@@ -419,6 +421,9 @@ export function activate(ctx) {
               transfer: true,
               objectives: item.objectives,
               previous: item.question,
+              previousRubric: item.rubric,
+              testedSkill: item.testedSkill ?? item.question,
+              fullyTested: item.fullyTested ?? [],
             });
           c.exam.index++;
           c.phase = c.exam.index >= c.exam.queue.length ? 'complete' : 'exam-next';
@@ -500,13 +505,17 @@ export function activate(ctx) {
           prepareExamPrompt,
           {
             chapter: source.title,
-            objectives: objectives.map(({ id, skill, page, quote }) => ({ id, skill, page, quote })),
+            objectives: entry.transfer
+              ? objectives.map((o) => ({ id: o.id, skill: entry.testedSkill ?? entry.previous }))
+              : objectives.map(({ id, skill, page, quote }) => ({ id, skill, page, quote })),
             exercise,
             entry,
             sources: pages.map((n) => b.pages[n - 1]),
-            reading: exercise
-              ? sourceForItem(source, exercise, objectives)
-              : [...new Set(objectives.map((o) => source.sections[o.section].text))].join('\n'),
+            reading: entry.transfer
+              ? entry.previousRubric
+              : exercise
+                ? sourceForItem(source, exercise, objectives)
+                : [...new Set(objectives.map((o) => source.sections[o.section].text))].join('\n'),
           },
           images,
         );
@@ -525,6 +534,8 @@ export function activate(ctx) {
         if (entry.transfer && normalise(item.question) === normalise(entry.previous))
           throw Error('The transfer question repeated the assisted problem. Retry for a new example.');
         item.transfer = !!entry.transfer;
+        if (entry.transfer)
+          item.fullyTested = item.fullyTested.filter((id) => entry.fullyTested?.includes(id));
         item.historyStart = c.messages.length;
         exam.items.push(item);
         c.messages.push(msg('tutor', item.question));

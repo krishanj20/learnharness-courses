@@ -29,9 +29,15 @@ function logicalReply(instruction, input) {
   if (instruction.includes('verifiable')) {
     return {
       question: 'Which assumption does the chapter use, and what follows from it?',
+      transcription:
+        input.exercise?.id === '2.1'
+          ? 'Show that the compounded return is no greater than the arithmetic mean return.'
+          : undefined,
       rubric: 'Explain the assumption and its consequence.',
       check: 'Apply the reasoning to a second example.',
       objectives: input.objectives.map((o) => o.id),
+      fullyTested: input.objectives.map((o) => o.id),
+      testedSkill: 'Identify the source assumption and predict the resulting change.',
       verifiable: true,
     };
   }
@@ -53,17 +59,23 @@ function logicalReply(instruction, input) {
 }
 export async function startFixture() {
   const requests = [];
+  const visualExamExercises = [];
   let connected = true;
   const server = createServer(async (req, res) => {
     try {
-      if (req.url === '/v1/models') return res.end(JSON.stringify({ object: 'list', data: [{ id }] }));
+      if (req.url === '/v1/models')
+        return res.end(
+          JSON.stringify({ object: 'list', data: [{ id, input_modalities: ['text', 'image'] }] }),
+        );
       if (req.url !== '/v1/chat/completions') {
         res.writeHead(404);
         return res.end();
       }
       if (!connected) {
         res.writeHead(400);
-        return res.end(JSON.stringify({ error: { message: 'Disconnected in the desktop scenario' } }));
+        return res.end(
+          JSON.stringify({ error: { message: 'Disconnected in the desktop scenario' } }),
+        );
       }
       let raw = '';
       for await (const chunk of req) raw += chunk;
@@ -75,6 +87,12 @@ export async function startFixture() {
         typeof prompt === 'string' ? prompt : prompt.find((x) => x.type === 'text').text,
       );
       requests.push(input);
+      if (
+        input.exercise?.id &&
+        Array.isArray(prompt) &&
+        prompt.some((part) => part.type === 'image_url')
+      )
+        visualExamExercises.push(input.exercise.id);
       const result = logicalReply(instruction, input);
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
       for (const [delta, finish_reason] of [
@@ -105,6 +123,7 @@ export async function startFixture() {
   const baseUrl = 'http://127.0.0.1:' + server.address().port + '/v1';
   return {
     requests,
+    visualExamExercises,
     setConnected(value) {
       connected = value;
     },

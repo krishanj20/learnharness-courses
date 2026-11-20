@@ -557,11 +557,13 @@ export function activate(ctx) {
                 'p',
                 o.skill +
                   ' · ' +
-                  (attempts.some((r) => !r.assisted)
+                  (attempts.some((r) => !r.assisted && r.fullyTested?.includes(o.id))
                     ? 'Demonstrated independently'
-                    : attempts.length
-                      ? 'Practise again'
-                      : 'Not assessed'),
+                    : attempts.some((r) => !r.assisted)
+                      ? 'Partly demonstrated independently'
+                      : attempts.length
+                        ? 'Practise again'
+                        : 'Not assessed'),
               ),
             );
           }
@@ -571,6 +573,8 @@ export function activate(ctx) {
             d.append(
               el('summary', r.origin + ' · ' + r.answerOrigin + (r.hintOrigin ? ' · ' + r.hintOrigin : '')),
             );
+            if (r.testedSkill)
+              d.append(el('p', r.testedSkill + ' · ' + (r.assisted ? 'With guidance' : 'Independent')));
             markdown(d, r.solution);
             body.append(d);
           }

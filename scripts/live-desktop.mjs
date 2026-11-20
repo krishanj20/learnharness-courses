@@ -1,7 +1,7 @@
 // See report/verification-live.md for prerequisites and the three scenarios.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import {createHash} from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { startFixture } from './live-provider.mjs';
 import { cp, mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
@@ -69,7 +69,10 @@ async function launch(offline = false) {
   browser = await eventually(async () => {
     if (desktop.exitCode !== null) throw Error('Desktop exited. ' + output.slice(-500));
     const port = (await readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
-    return await puppeteer.connect({ browserURL: 'http://127.0.0.1:' + port, defaultViewport: null });
+    return await puppeteer.connect({
+      browserURL: 'http://127.0.0.1:' + port,
+      defaultViewport: null,
+    });
   });
   page = await eventually(async () => {
     const target = (await browser.pages()).find((p) => /^http:\/\/127\.0\.0\.1:/.test(p.url()));
@@ -175,9 +178,20 @@ async function prepare() {
     await writeFile(path.join(data, 'chats', record.id + '.json'), JSON.stringify(record));
   }
   await cp(offlineDist, path.join(data, 'plugins/offline-plans/dist'), { recursive: true });
-  await cp(offlineFixture, path.join(data, 'plugins/offline-plans/data/courses'), { recursive: true });
+  await cp(offlineFixture, path.join(data, 'plugins/offline-plans/data/courses'), {
+    recursive: true,
+  });
   if (!hostOnly) {
-    await cp(path.join(repo, 'dist'), path.join(data, 'plugins/book-courses/dist'), { recursive: true });
+    const installed = path.join(data, 'plugins/book-courses/dist');
+    await cp(path.join(repo, 'dist'), installed, {
+      recursive: true,
+    });
+    result.packageSHA256 = {};
+    for (const name of ['main.js', 'backend.cjs']) {
+      result.packageSHA256[name] = createHash('sha256')
+        .update(await readFile(path.join(installed, name)))
+        .digest('hex');
+    }
     const book = syntheticOnly ? path.join(repo, 'tests/fixtures/weighing-evidence.pdf') : source;
     assert.ok(book, 'Set COURSES_PDF to the local EQI draft');
     await cp(book, selected);
@@ -259,7 +273,9 @@ try {
     });
   }
 } catch (error) {
-  const visible = await page?.evaluate(() => document.body.innerText.slice(0, 2000)).catch(() => '');
+  const visible = await page
+    ?.evaluate(() => document.body.innerText.slice(0, 2000))
+    .catch(() => '');
   console.error(visible || '');
   throw error;
 } finally {
