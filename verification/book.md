@@ -38,3 +38,11 @@ Earlier runs caught appendix pages included in a chapter assignment, hints attac
 ## Remaining scope
 
 The tests establish the observed IDs, ranges, readings, hints and proof pairings above. The actual desktop reader, saved chapter state, configured tutor and grading quality require separate end-to-end checks. The extraction tests cannot show whether a model correctly understands a rendered equation.
+
+## Alternative book in Courses 0.1.3
+
+The 430-page 2024 second edition of *Fixed Income Relative Value Analysis* combines numbered bookmarks nested under part dividers with unnumbered typographic section headings. The initial importer folded Principal Component Analysis into Mean Reversion and produced lesson titles from numerical sentences. The corrected import matched all 20 chapter starts against the contents on PDF pages 6–7 and recovered 121 readings.
+
+Mean Reversion runs from printed pp. 17–50 (PDF pp. 30–63). Its eight main headings start on PDF pp. 30, 37, 43, 46, 50, 55, 56 and 63. The rendered final page contains the conclusion. The imported chapter has no numbered exercises. A live model test in a disposable copy of the saved plan generated a question distinguishing predictable returns from alpha, then responded to a request for help with one smaller question. The graded flow used a disposable exam-ready state. The learner’s course stayed at its first reading.
+
+In EQI Chapter 2 the desktop test opened PDF p. 99 from the new exam overview while all four lessons were unfinished, verified that the chat stayed at the reading gate, and later started the exam with Exercise 2.1 after completing the lessons in the test profile. Exercise 2.4 carries the book's unresolved equation reference and is excluded from grading.

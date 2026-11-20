@@ -140,6 +140,12 @@ export async function runCourseChecks({
   );
   await click('2. ' + course.chapters[1].title);
   await see('0 of 4 lessons done', '.book-courses');
+  await see('Available after all 4 lessons are done.', '.bc-exam');
+  await see('Book exercises: 2.1, 2.2, 2.3, 2.5.', '.bc-exam');
+  await click('View book questions · PDF p. 99');
+  await page().waitForSelector('canvas[aria-label="Original PDF page 99"]');
+  await click('Back to exam');
+  assert.equal((await call('chat', { id, chapter: 1 })).phase, 'reading');
   await see('§2.4 · Appendix · Upcoming', '.bc-lessons');
   await see('Start with the chapter introduction before §2.1.', '.bc-reading');
   await click('Open assigned pages');

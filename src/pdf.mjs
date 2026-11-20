@@ -24,15 +24,19 @@ function linesFrom(items) {
   const lines = [];
   let text = '',
     height = 0,
+    font,
     x = 0;
   const flush = () => {
-    if (text.trim()) lines.push({ text: text.trim().normalize('NFKC'), height, x });
+    if (text.trim()) lines.push({ text: text.trim().normalize('NFKC'), height, x, font });
     text = '';
     height = 0;
   };
   for (const item of items) {
     if (typeof item.str !== 'string') continue;
-    if (!text.trim() && item.str.trim()) x = item.transform[4];
+    if (!text.trim() && item.str.trim()) {
+      x = item.transform[4];
+      font = item.fontName;
+    }
     text += item.str;
     height = Math.max(height, item.height || 0);
     if (item.hasEOL) flush();
@@ -113,6 +117,65 @@ function bodyHeadings(pages) {
     }
   }
   return found.filter((h, i, all) => all.findLastIndex((x) => x.number === h.number) === i);
+}
+
+// Some outlines use bare chapter numbers below part dividers. A consecutive
+// sequence in page order distinguishes these from numbered sections and lists.
+function numberedChapters(outline) {
+  const entries = outline.flatMap((h) => (/^part\s+(?:[ivxlcdm]+|\d+)\b/i.test(h.title) ? h.children : [h]));
+  const chapters = entries.flatMap((h) => {
+    const m = /^(\d+)[.:)]?\s+(\S.*)$/.exec(h.title);
+    return m && h.page ? [{ ...h, number: m[1], title: m[2] }] : [];
+  });
+  return chapters.length &&
+    chapters.every((h, i) => Number(h.number) === i + 1 && (!i || h.page > chapters[i - 1].page))
+    ? chapters
+    : [];
+}
+
+function typographicHeadings(pages) {
+  const weights = new Map();
+  for (const p of pages)
+    for (const l of p.lines) {
+      const size = Math.round(l.height * 10) / 10;
+      weights.set(size, (weights.get(size) ?? 0) + l.text.length);
+    }
+  const bodySize = [...weights].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const roots = [];
+  let parent;
+  for (const page of pages) {
+    let previous;
+    for (const [line, l] of page.lines.entries()) {
+      const primary =
+        l.height >= bodySize * 1.14 &&
+        l.height <= bodySize * 1.65 &&
+        /[A-Z]{2}/.test(l.text) &&
+        l.text === l.text.toUpperCase() &&
+        !/^(?:CHAPTER|PART|FIGURE|TABLE)\s+[\dIVXLCDM]+\b/.test(l.text);
+      const secondary =
+        parent &&
+        l.font === parent.font &&
+        l.height > bodySize * 1.04 &&
+        l.height < parent.height * 0.98 &&
+        /^[A-Z]/.test(l.text) &&
+        !/[.!;]$/.test(l.text);
+      if (!primary && !secondary) {
+        previous = null;
+        continue;
+      }
+      if (previous && previous.font === l.font && Math.abs(previous.height - l.height) < 0.1) {
+        previous.title += ' ' + l.text;
+        continue;
+      }
+      const h = { page: page.number, line, title: l.text, font: l.font, height: l.height, children: [] };
+      if (primary) {
+        roots.push(h);
+        parent = h;
+      } else parent.children.push(h);
+      previous = h;
+    }
+  }
+  return roots;
 }
 
 function locate(pages, h) {
@@ -326,6 +389,7 @@ export async function extractBook(bytes, filename = 'Book.pdf', onProgress = () 
     const flat = allDescendants(outline).filter((h) => h.page);
     const body = bodyHeadings(pages);
     let roots = flat.filter((h) => /^chapter\.\d+$/.test(h.dest) || chapterHeading.test(h.title));
+    if (!roots.length) roots = numberedChapters(outline);
     if (!roots.length && body.length)
       roots = body.map((h) => ({
         ...h,
@@ -350,25 +414,47 @@ export async function extractBook(bytes, filename = 'Book.pdf', onProgress = () 
     const unknownOutline = !roots.length;
     if (unknownOutline) roots = [{ title, page: 1, children: [] }];
     const chapters = roots.map((root, i) => {
+      const nextPart = outline.find(
+        (h) => /^part\s+(?:[ivxlcdm]+|\d+)\b/i.test(h.title) && h.page > root.page,
+      );
       const end =
-        (roots[i + 1]?.page ?? Math.min(boundary ?? Infinity, tail ?? Infinity, doc.numPages + 1)) - 1;
+        Math.min(
+          roots[i + 1]?.page ?? Infinity,
+          nextPart?.page ?? Infinity,
+          boundary ?? Infinity,
+          tail ?? Infinity,
+          doc.numPages + 1,
+        ) - 1;
       const chapter = { title: root.title, start: root.page, end, sections: [], exercises: [] };
       let headings = root.children.filter((h) => h.page >= root.page && h.page <= end);
       if (!headings.length) {
-        headings = pages.slice(root.page - 1, end).flatMap((p) =>
+        const chapterPages = pages.slice(root.page - 1, end);
+        const numbered = chapterPages.flatMap((p) =>
           p.lines.flatMap((l) => {
             const m = l.text.match(sectionHeading);
-            return m && m[1].split('.').length === 2 && l.text.length < 110 && !/\.{3}/.test(l.text)
+            return m &&
+              Number(m[1].split('.')[0]) === Number(root.number ?? i + 1) &&
+              m[1].split('.').length === 2 &&
+              l.text.length < 110 &&
+              !/\.{3}/.test(l.text)
               ? [{ number: m[1], title: m[2], page: p.number, children: [] }]
               : [];
           }),
         );
+        // A decimal at the start of a sentence can look like a section number.
+        // Prefer coherent section numbering before trying typographic structure.
+        const sequential =
+          numbered.length && numbered.every((h, j) => Number(h.number.split('.')[1]) === j + 1);
+        headings = sequential ? numbered : typographicHeadings(chapterPages);
+        if (!headings.length) headings = numbered;
       }
       const located = headings.map((h) =>
-        locate(pages, {
-          ...h,
-          number: h.number || String(h.dest || '').match(/^section\.(\d+(?:\.\d+)*)$/)?.[1],
-        }),
+        Number.isInteger(h.line)
+          ? h
+          : locate(pages, {
+              ...h,
+              number: h.number || String(h.dest || '').match(/^section\.(\d+(?:\.\d+)*)$/)?.[1],
+            }),
       );
       if (!located.length) located.push({ title: root.title, page: root.page, line: 0, children: [] });
       for (const [j, h] of located.entries()) {

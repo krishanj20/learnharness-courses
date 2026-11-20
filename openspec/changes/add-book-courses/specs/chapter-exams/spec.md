@@ -3,6 +3,11 @@
 ### Requirement: Source-first assessment
 At the end of each chapter the tutor SHALL offer an exam, prefer chapter exercises, and use verified matching book answers where available. It SHALL distinguish the origins of questions and answers.
 
+#### Scenario: Find the exam before finishing the lessons
+- **WHEN** the learner opens a chapter
+- **THEN** the lesson list is followed by a Chapter exam overview with its availability and question source
+- **AND** the learner can preview the original exercise pages without starting the exam or changing progress
+
 #### Scenario: Back-of-book key
 - **WHEN** a chapter exercise has a numbered solution in a separate appendix
 - **THEN** the original problem and its parts are used, its solution cites the matching page, and the answer stays hidden before the learner’s attempt

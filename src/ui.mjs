@@ -431,7 +431,7 @@ export function activate(ctx) {
         const labels = await doc.getPageLabels();
         reset();
         navigation(
-          button('Back to lesson', () => paintChat(lessonIndex)),
+          button(lessonIndex === 'exam' ? 'Back to exam' : 'Back to lesson', () => paintChat(lessonIndex)),
           backToChapters(),
         );
         closeReader = await scrollReader(body, doc, labels, start, end);
@@ -468,6 +468,39 @@ export function activate(ctx) {
           markdown(block, m.text);
           parent.append(block);
         }
+      }
+      function examOverview(ch, studying) {
+        const panel = el('section', null, 'bc-exam');
+        panel.append(el('h2', 'Chapter exam'));
+        const exercises = ch.exercisePages;
+        const eligible = exercises.filter((e) => !e.blocked);
+        panel.append(
+          el(
+            'p',
+            eligible.length
+              ? 'Book exercises: ' + eligible.map((e) => e.id).join(', ') + '.'
+              : 'The tutor will write questions based on this chapter’s lessons.',
+          ),
+        );
+        if (studying)
+          panel.append(el('p', 'Available after all ' + ch.sections.length + ' lessons are done.'));
+        else if (chat.phase === 'exam-ready') panel.append(button('Start chapter exam', exam, true));
+        else panel.append(el('p', chat.phase === 'complete' ? 'Done · See results below.' : 'In progress'));
+        const ranges = new Map();
+        for (const e of exercises) {
+          const end = e.endPage ?? e.page;
+          ranges.set(e.page + '–' + end, { start: e.page, end });
+          if (e.blocked) panel.append(el('p', 'Exercise ' + e.id + ' · Excluded from grading: ' + e.blocked));
+        }
+        for (const { start, end } of ranges.values()) {
+          panel.append(
+            button(
+              'View book questions · PDF ' + (start === end ? 'p. ' + start : 'pp. ' + start + '–' + end),
+              () => openReader(start, end, 'exam'),
+            ),
+          );
+        }
+        body.append(panel);
       }
       function paintChat(reviewLesson = null) {
         reset();
@@ -514,7 +547,9 @@ export function activate(ctx) {
             openReader(ch.start, ch.end),
           ),
         );
-        if (reviewLesson != null) lessons.children[reviewLesson].querySelector('button').focus();
+        examOverview(ch, studying);
+        if (reviewLesson === 'exam') body.querySelector('.bc-exam button')?.focus();
+        else if (reviewLesson != null) lessons.children[reviewLesson].querySelector('button').focus();
         // Older versions kept only the current lesson boundary. Keep any earlier
         // turns available together when their individual lessons are unknown.
         const known = Object.values(chat.lessonRanges ?? {});
@@ -571,10 +606,7 @@ export function activate(ctx) {
         }
         if (chat.phase === 'exam-next')
           for (const reason of chat.exam?.ungraded ?? []) body.append(el('p', reason));
-        if (chat.phase === 'exam-ready' || chat.phase === 'exam-next')
-          body.append(
-            button(chat.phase === 'exam-ready' ? 'Start chapter exam' : 'Next exam question', exam, true),
-          );
+        if (chat.phase === 'exam-next') body.append(button('Next exam question', exam, true));
         if (chat.phase === 'complete') {
           heading('h2', 'Chapter exam results');
           for (const o of ch.objectives) {
