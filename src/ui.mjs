@@ -535,7 +535,7 @@ export function activate(ctx) {
         const entries = bookQuestions(pages);
         const target = id ?? chat.exam?.questions[chat.exam.index]?.id ?? entries[0]?.id;
         const source = entries.find((q) => q.id === target);
-        const next = source && pages[source.sourceIndex];
+        const next = q ? (q.number ? pages[q.sourceIndex] : null) : source && pages[source.sourceIndex];
         show('Opening the question chat…');
         const state = await call('exam', {
           ...args(),

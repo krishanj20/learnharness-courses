@@ -992,3 +992,55 @@ test('separate questions and printed sources when a book repeats a number', asyn
     printed,
   );
 });
+
+test('re-importing a changed list keeps queued sources and replaces removed or newly blocked exercises', async (t) => {
+  const source = ['3.1', '3.1', '3.2'].map((id, i) => ({ id, text: 'Printed problem ' + i, page: i + 1 }));
+  const h = host(t, [chapter(solo, source)]);
+  await finishReadings(h);
+  h.reply(verification());
+  await h.call('exam', { questionId: 'book-3.2' });
+  const updated = structuredClone(h.source);
+  updated.chapters[0].exercises.shift();
+  updated.chapters[0].exercises.push({ id: '3.3', text: 'Additional exercise', page: 3 });
+  await h.call('import', { source: updated });
+  const moved = await h.call('exam', { questionId: 'book-3.1-2' });
+  assert.equal(moved.exam.current.question, 'Printed problem 1');
+  assert.equal(moved.exam.current.sourceIndex, 0);
+  assert.ok(moved.exam.questions.some((q) => q.id === 'book-3.1-replacement'));
+  // The active transcript survives if a later extraction flags that exercise.
+  updated.chapters[0].exercises[0].blocked = 'unresolved reference';
+  await h.call('import', { source: updated });
+  assert.equal((await h.call('chat')).exam.current.question, 'Printed problem 1');
+  for (const id of ['book-3.1-2', 'book-3.2', 'book-3.1-replacement']) {
+    h.reply(verification());
+    const q = await h.call('exam', { questionId: id });
+    if (id.endsWith('replacement')) assert.equal(q.exam.current.origin, 'Tutor-written');
+    h.reply({ reply: 'Correct.', solved: true, assisted: false });
+    await h.call('turn', { questionId: id, action: 'answer', text: 'A complete derivation.' });
+  }
+  assert.equal((await h.call('chat')).phase, 'complete');
+});
+
+test('a newly blocked unprepared exercise becomes a tutor-written replacement after re-import', async (t) => {
+  const h = host(t, [
+    chapter(
+      solo,
+      ['3.1', '3.2'].map((id) => ({ id, text: 'Original ' + id, page: 1 })),
+    ),
+  ]);
+  await finishReadings(h);
+  h.reply(verification());
+  await h.call('exam');
+  const updated = structuredClone(h.source);
+  updated.chapters[0].exercises[1].blocked = 'unresolved reference';
+  await h.call('import', { source: updated });
+  const state = await h.call('chat');
+  assert.match(state.exam.ungraded.at(-1), /Exercise 3.2/);
+  assert.equal(state.exam.questions[1].id, 'book-3.2-replacement');
+  h.reply((input) => {
+    assert.equal(input.exercise, undefined);
+    return verification();
+  });
+  const opened = await h.call('exam', { questionId: state.exam.questions[1].id });
+  assert.equal(opened.exam.current.origin, 'Tutor-written');
+});

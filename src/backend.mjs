@@ -1,4 +1,10 @@
-import { advanceExam, bookQuestions, restoreExamThreads } from './exam-threads.mjs';
+import {
+  advanceExam,
+  bookQuestions,
+  refreshExamSources,
+  restoreExamThreads,
+  sourceExercise,
+} from './exam-threads.mjs';
 import { practiceOffer, practiceSummary, registerReview } from './review.mjs';
 import { registerTeaching } from './native-teaching.mjs';
 import fs from 'node:fs';
@@ -178,6 +184,7 @@ export function activate(ctx) {
       'source-' + createHash('sha256').update(JSON.stringify(source)).digest('hex') + '.json';
     if (existing?.sourceFile === sourceFile && existing.chapters.every((ch) => 'mathPage' in ch))
       return publicCourse(existing, source);
+    const previousBook = existing?.chapters.some((ch) => ch.chat.exam) ? book(id) : null;
     const c = {
       id,
       title: source.title,
@@ -185,6 +192,7 @@ export function activate(ctx) {
       sourceFile,
       chapters: source.chapters.map((ch, i) => {
         const saved = existing?.chapters[i] ?? { chat: initialChat() };
+        if (previousBook) refreshExamSources(saved.chat, previousBook.chapters[i].exercises, ch.exercises);
         if (existing) saved.chat.rev++;
         const chapterPages = source.pages.slice(ch.start - 1, ch.end);
         const math =
@@ -558,10 +566,7 @@ export function activate(ctx) {
           c.phase = 'exam';
           return;
         }
-        const sourceQuestion = entry.number && bookQuestions(source.exercises).find((q) => q.id === entry.id);
-        const exercise = sourceQuestion && source.exercises[sourceQuestion.sourceIndex];
-        if (entry.number && !exercise)
-          throw Error('The original exercise is no longer in the chapter outline.');
+        const exercise = sourceExercise(exam, entry, source.exercises);
         const objectives = entry.objectives
           ? ch.objectives.filter((o) => entry.objectives.includes(o.id))
           : ch.objectives;
