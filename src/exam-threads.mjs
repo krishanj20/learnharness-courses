@@ -1,5 +1,26 @@
+// Some books restart exercise numbering within a chapter.
+export function bookQuestions(exercises) {
+  const totals = new Map(),
+    seen = new Map();
+  for (const e of exercises) if (!e.blocked) totals.set(e.id, (totals.get(e.id) ?? 0) + 1);
+  return exercises.flatMap((e, sourceIndex) => {
+    if (e.blocked) return [];
+    const n = (seen.get(e.id) ?? 0) + 1;
+    seen.set(e.id, n);
+    const total = totals.get(e.id);
+    return [
+      {
+        id: 'book-' + e.id + (n > 1 ? '-' + n : ''),
+        number: e.id,
+        label: 'Exercise ' + e.id + (total > 1 ? ' (' + n + ' of ' + total + ')' : ''),
+        sourceIndex,
+      },
+    ];
+  });
+}
+
 // Legacy exams kept consecutive question transcripts in one chapter log.
-export function restoreExamThreads(chat) {
+export function restoreExamThreads(chat, exercises) {
   const exam = chat.exam;
   if (!exam || !Array.isArray(exam.items)) return;
   const { items } = exam;
@@ -12,8 +33,11 @@ export function restoreExamThreads(chat) {
     start = position + 1;
     return position;
   });
+  const remaining = bookQuestions(exercises ?? []);
   for (const [i, thread] of exam.queue.entries()) {
-    thread.id = thread.number ? 'book-' + thread.number : 'legacy-' + i;
+    const source = remaining.findIndex((q) => q.number === thread.number);
+    if (source >= 0) Object.assign(thread, remaining.splice(source, 1)[0]);
+    else thread.id = thread.number ? 'book-' + thread.number + '-legacy-' + i : 'legacy-' + i;
     if (!items[i]) continue;
     thread.item = items[i];
     thread.messages = chat.messages.slice(starts[i], starts[i + 1]);
@@ -33,9 +57,11 @@ export function publicExam(exam) {
     const item = entry.item;
     return {
       id: entry.id,
-      label: entry.number
-        ? 'Exercise ' + entry.number
-        : (entry.label ?? (entry.transfer ? 'Follow-up' : 'Question') + ' ' + (i + 1)),
+      label:
+        entry.label ??
+        (entry.number
+          ? 'Exercise ' + entry.number
+          : (entry.transfer ? 'Follow-up' : 'Question') + ' ' + (i + 1)),
       number: entry.number,
       status: entry.done ? 'Done' : item ? 'In progress' : 'Available',
       transfer: !!entry.transfer,

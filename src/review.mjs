@@ -11,8 +11,12 @@ function examOutcome(results, id) {
 }
 
 function examBaseline(chat, id) {
-  const last = chat.results.findLast((r) => !r.assisted && r.fullyTested?.includes(id));
-  return last?.solvedAt ?? chat.examCompletedAt;
+  // Saved answers can be graded out of order after a disconnected attempt.
+  const dates = chat.results
+    .filter((r) => !r.assisted && r.fullyTested?.includes(id))
+    .map((r) => r.solvedAt ?? chat.examCompletedAt)
+    .filter(Number.isFinite);
+  return dates.length ? Math.max(...dates) : chat.examCompletedAt;
 }
 
 export function practiceSummary(ch, now = Date.now()) {

@@ -129,19 +129,23 @@ export function nativeAnswers(messages) {
         .trim();
       const answer = d.dontKnow ? "I don't know" : [...selected, reasoning].filter(Boolean).join('\n');
       if (answer.trim())
-        record({
-          id: m.id,
-          prompt: d.questionText,
-          answer,
-          reasoning,
-          selected,
-          selectionOnly:
-            !!selected.length &&
-            (!reasoning ||
-              selected.some((s) => passageText(s).toLowerCase() === passageText(reasoning).toLowerCase())),
-          confidence: d.confidence,
-          negative: d.correct === false || d.dontKnow === true,
-        }, index, d.answeredAt ? Date.parse(d.answeredAt) : m.timestamp);
+        record(
+          {
+            id: m.id,
+            prompt: d.questionText,
+            answer,
+            reasoning,
+            selected,
+            selectionOnly:
+              !!selected.length &&
+              (!reasoning ||
+                selected.some((s) => passageText(s).toLowerCase() === passageText(reasoning).toLowerCase())),
+            confidence: d.confidence,
+            negative: d.correct === false || d.dontKnow === true,
+          },
+          index,
+          d.answeredAt ? Date.parse(d.answeredAt) : m.timestamp,
+        );
       // The host reveals feedback after submission. It can inform a later answer.
       const reveal = d.explanation ?? d.committed;
       if (typeof reveal === 'string' && d.questionType !== 'predict') tutorContext.push(reveal);
@@ -298,9 +302,21 @@ export function initialChat() {
   return { section: 0, phase: 'reading', messages: [], covered: [], results: [], rev: 0 };
 }
 
-export function publicChat(chat) {
-  restoreExamThreads(chat);
+export function publicChat(chat, exercises) {
+  restoreExamThreads(chat, exercises);
   const { exam, ...visible } = chat;
+  // The earliest release stored the start of the last lesson but no end.
+  const lastStart = chat.sectionTurnStart ?? 0;
+  if (
+    !['reading', 'discussion'].includes(chat.phase) &&
+    !chat.lessonRanges?.[chat.section] &&
+    chat.messages.length > lastStart
+  ) {
+    visible.lessonRanges = {
+      ...chat.lessonRanges,
+      [chat.section]: { start: lastStart, end: chat.examTurnStart ?? chat.messages.length },
+    };
+  }
   const pending = chat.phase === 'exam' && exam?.queue[exam.index]?.pending;
   return { ...visible, ...(pending ? { pending } : {}), exam: publicExam(exam) };
 }

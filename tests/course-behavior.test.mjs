@@ -898,13 +898,20 @@ test('open book exercises in any order and retry a saved answer inside its own q
 
 test('opening an older sequential exam recovers each question, the lesson transcript and the pending retry', async (t) => {
   const { readFileSync, writeFileSync } = await import('node:fs');
-  const h = host(t, [chapter(solo)]);
+  const h = host(t, [
+    chapter(
+      solo,
+      ['3.1', '3.2'].map((id) => ({ id, text: 'Printed ' + id, page: 1 })),
+    ),
+  ]);
   const path = join(h.root, h.id, 'course.json');
   await finishReadings(h);
   const course = JSON.parse(readFileSync(path, 'utf8'));
   const chat = course.chapters[0].chat;
   const original = structuredClone(chat.messages);
   chat.phase = 'exam';
+  delete chat.lessonRanges;
+  delete chat.examTurnStart;
   const item = { objectives: ['1.1'], rubric: 'Private grading notes.', origin: 'Book exercise' };
   chat.exam = {
     index: 1,
@@ -930,6 +937,7 @@ test('opening an older sequential exam recovers each question, the lesson transc
   h.restart();
   const resumed = await h.call('chat');
   assert.deepEqual(resumed.messages, original);
+  assert.deepEqual(resumed.lessonRanges[0], { start: 0, end: original.length });
   assert.deepEqual(
     resumed.exam.questions.map((q) => [q.status, q.messages.length]),
     [
@@ -951,4 +959,36 @@ test('opening an older sequential exam recovers each question, the lesson transc
   assert.deepEqual(await h.call('chat'), graded);
   assert.equal(graded.results.length, 1);
   assert.equal(graded.exam.questions[1].messages.length, 3);
+});
+
+test('separate questions and printed sources when a book repeats a number', async (t) => {
+  const printed = ['first argument', 'second argument'];
+  const h = host(t, [
+    chapter(
+      solo,
+      printed.map((text, i) => ({ id: '3.1', text, page: i + 1, endPage: i + 1 })),
+    ),
+  ]);
+  await finishReadings(h);
+  for (const [i, id] of [
+    [1, 'book-3.1-2'],
+    [0, 'book-3.1'],
+  ]) {
+    h.reply((input) => {
+      assert.equal(input.exercise.text, printed[i]);
+      assert.equal(input.sources[0].number, i + 1);
+      return verification();
+    });
+    const opened = await h.call('exam', { questionId: id });
+    assert.equal(opened.exam.current.label, 'Exercise 3.1 (' + (i + 1) + ' of 2)');
+    assert.equal(opened.exam.current.messages[0].text, printed[i]);
+    h.reply({ reply: 'Correct.', solved: true, assisted: false });
+    await h.call('turn', { questionId: id, action: 'answer', text: 'Complete proof.' });
+  }
+  const complete = await h.call('chat');
+  assert.equal(complete.phase, 'complete');
+  assert.deepEqual(
+    complete.exam.questions.map((q) => q.messages[0].text),
+    printed,
+  );
 });

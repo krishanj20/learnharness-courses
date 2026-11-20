@@ -1,3 +1,4 @@
+import { bookQuestions } from './exam-threads.mjs';
 import { openTeaching } from './open-teaching.mjs';
 import { GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import worker from 'bundled-pdf-worker';
@@ -530,12 +531,11 @@ export function activate(ctx) {
           paintChat();
           return;
         }
-        const list = course.chapters[index].exercisePages.filter((e) => !e.blocked);
-        const next = id
-          ? list.find((e) => 'book-' + e.id === id)
-          : chat.exam
-            ? list.find((e) => e.id === chat.exam.next)
-            : list[0];
+        const pages = course.chapters[index].exercisePages;
+        const entries = bookQuestions(pages);
+        const target = id ?? chat.exam?.questions[chat.exam.index]?.id ?? entries[0]?.id;
+        const source = entries.find((q) => q.id === target);
+        const next = source && pages[source.sourceIndex];
         show('Opening the question chat…');
         const state = await call('exam', {
           ...args(),
@@ -620,12 +620,7 @@ export function activate(ctx) {
         else panel.append(el('p', chat.phase === 'complete' ? 'Done · See results below.' : 'In progress'));
         if (!studying) {
           const questions =
-            chat.exam?.questions ??
-            eligible.map((e) => ({
-              id: 'book-' + e.id,
-              label: 'Exercise ' + e.id,
-              status: 'Available',
-            }));
+            chat.exam?.questions ?? bookQuestions(exercises).map((q) => ({ ...q, status: 'Available' }));
           const list = el('ul', null, 'bc-questions');
           for (const q of questions) {
             const row = el('li');
@@ -809,8 +804,7 @@ export function activate(ctx) {
           body.append(older);
         }
         if (studying) reading(ch, s);
-        const from = studying ? chat.sectionTurnStart : (chat.examTurnStart ?? chat.sectionTurnStart);
-        if (studying) messages(body, chat.messages.slice(from ?? 0));
+        if (studying) messages(body, chat.messages.slice(chat.sectionTurnStart ?? 0));
         if (studying && chat.pending) {
           body.append(
             el('p', 'Your answer is saved. Reconnect to the model to continue.'),

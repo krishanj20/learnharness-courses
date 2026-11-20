@@ -1,4 +1,4 @@
-import { advanceExam, restoreExamThreads } from './exam-threads.mjs';
+import { advanceExam, bookQuestions, restoreExamThreads } from './exam-threads.mjs';
 import { practiceOffer, practiceSummary, registerReview } from './review.mjs';
 import { registerTeaching } from './native-teaching.mjs';
 import fs from 'node:fs';
@@ -238,7 +238,10 @@ export function activate(ctx) {
       fs.closeSync(fd);
     }
   });
-  ctx.handle('chat', ({ id, chapter }) => publicChat(at(state(id).chapters, chapter).chat));
+  ctx.handle('chat', ({ id, chapter }) => {
+    const ch = at(state(id).chapters, chapter);
+    return publicChat(ch.chat, ch.exercisePages);
+  });
 
   function priorAnswers() {
     const out = [];
@@ -286,13 +289,13 @@ export function activate(ctx) {
         fresh.chapters[chapter] = ch;
         save(id, fresh);
       };
-      restoreExamThreads(ch.chat);
+      restoreExamThreads(ch.chat, ch.exercisePages);
       const previousPhase = ch.chat.phase;
       await fn(ch, store);
       if (previousPhase !== 'complete' && ch.chat.phase === 'complete') ch.chat.examCompletedAt = Date.now();
       ch.chat.rev++;
       store();
-      return publicChat(ch.chat);
+      return publicChat(ch.chat, ch.exercisePages);
     } finally {
       busy.delete(key);
     }
@@ -476,9 +479,7 @@ export function activate(ctx) {
           if (assisted && !item.transfer)
             c.exam.queue.splice(c.exam.index + 1, 0, {
               id: thread.id + '-follow-up',
-              label: thread.number
-                ? 'Follow-up to Exercise ' + thread.number
-                : 'Follow-up to ' + (thread.label ?? 'question'),
+              label: 'Follow-up to ' + (thread.label ?? 'question'),
               transfer: true,
               objectives: item.objectives,
               previous: item.question,
@@ -532,11 +533,11 @@ export function activate(ctx) {
       const b = book(a.id),
         source = b.chapters[a.chapter];
       if (!c.exam) {
-        const exercises = source.exercises.filter((e) => !e.blocked);
+        const exercises = bookQuestions(source.exercises);
         c.exam = {
           index: 0,
           queue: exercises.length
-            ? exercises.map((e) => ({ id: 'book-' + e.id, number: e.id }))
+            ? exercises
             : ch.sections.map((_, i) => ({
                 id: 'section-' + i,
                 label: 'Question ' + (i + 1),
@@ -557,7 +558,10 @@ export function activate(ctx) {
           c.phase = 'exam';
           return;
         }
-        const exercise = source.exercises.find((e) => e.id === entry.number);
+        const sourceQuestion = entry.number && bookQuestions(source.exercises).find((q) => q.id === entry.id);
+        const exercise = sourceQuestion && source.exercises[sourceQuestion.sourceIndex];
+        if (entry.number && !exercise)
+          throw Error('The original exercise is no longer in the chapter outline.');
         const objectives = entry.objectives
           ? ch.objectives.filter((o) => entry.objectives.includes(o.id))
           : ch.objectives;

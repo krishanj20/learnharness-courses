@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { practiceSummary } from '../src/review.mjs';
 import { activate } from '../src/backend.mjs';
 
 const week = 7 * 86400000;
@@ -177,4 +178,18 @@ test('a multi-day exam dates retrieval from the last independent solution of tha
   h.reply(success);
   await h.call('review-answer', { text: 'Multiplying gives 0.96, a loss of four percent.' });
   assert.equal(h.practice().outcome, 'Demonstrated independently after a week');
+});
+
+test('grading an older saved answer last keeps the later independent demonstration as the baseline', () => {
+  const results = [epoch, epoch - 4 * 86400000].map((solvedAt) => ({
+    objectives: ['1.1'],
+    fullyTested: ['1.1'],
+    assisted: false,
+    solvedAt,
+  }));
+  const [practice] = practiceSummary(
+    { objectives: [{ id: '1.1', skill }], chat: { phase: 'complete', results, examCompletedAt: epoch } },
+    epoch,
+  );
+  assert.equal(practice.dueAt, epoch + week);
 });
