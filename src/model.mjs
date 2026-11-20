@@ -43,12 +43,32 @@ export async function ask(ctx, task, data, images = []) {
 
 export const planPrompt = `Design a compact mini-lesson per chapter. For each numbered section, choose ONE central assessable outcome, or TWO only if genuinely distinct. State each as one reasoning task a learner can demonstrate in a worked answer. Group the underlying examples, assumptions and subsidiary ideas in a short supportingTopics list. Include every consequential nested heading in the lesson context without making one mastery hurdle per term. Use the chapter opening questions and takeaways to decide what matters. Avoid omnibus objectives that demand a list of unrelated tasks. Preserve section order. Return {"sections":[{"section":1,"objectives":[{"skill":"...","anchor":"s1p35.1","supportingTopics":[],"prerequisites":[],"status":"new","evidence":[]}]}]}. Cite the supplied passage identifier (anchor) whose text teaches that skill. Select one anchor from the same section. Use the identifiers exactly as provided. The app resolves the cited passage against the original text. Only use status demonstrated when matching evidence shows independent correct reasoning on the full skill; list the exact evidence IDs. Topic mentions, hints, contradictions, incorrect or irrelevant answers do not establish mastery. For mixed or assisted evidence return status uncertain and include the relevant evidence IDs, both supporting and contradicting. With missing evidence choose new. Never invent evidence or quotations.`;
 
+// Keep the book's section boundary for citations. The first lesson also assigns
+// the chapter opening, including the text above the first heading on a shared page.
+export function chapterOpening(book, chapter) {
+  const first = chapter.sections[0];
+  const parts = book.pages
+    .slice(chapter.start - 1, first.start - 1)
+    .map(({ number, text }) => ({ page: number, text }));
+  const page = book.pages[first.start - 1];
+  const start = first.parts[0]?.text;
+  const offset = start ? page.text.indexOf(start) : -1;
+  if (offset > 0) {
+    const text = page.text.slice(0, offset).trim();
+    if (text) parts.push({ page: page.number, text });
+  }
+  return parts;
+}
+
 export function planningSource(book, chapter) {
   // Include every section page and its source-passage IDs. Keep the opening and closing questions/takeaways in context.
   return {
     book: book.title,
     chapter: chapter.title,
-    opening: book.pages[chapter.start - 1].text,
+    opening:
+      chapterOpening(book, chapter)
+        .map((p) => p.text)
+        .join('\n') || book.pages[chapter.start - 1].text,
     closing: book.pages
       .slice(Math.max(chapter.start - 1, chapter.end - 3), chapter.end)
       .map((p) => p.text)
@@ -73,6 +93,12 @@ export const diagnosticPrompt = `Ask one short application question covering the
 export const prepareExamPrompt = `Prepare an assessment rubric. If a book exercise is supplied, preserve its task including all subparts. In transcription provide its faithful typeset mathematical transcription from the book page images; preserve variable names, assumptions, equation numbers and every subpart. Render equations with LaTeX. Do not supply its answer in transcription. If an essential symbol is ambiguous in the text and you cannot read the relevant image, set verifiable=false; use its paired solution when present. For a missing solution derive it and independently check the derivation (alternative argument, substitution or working a nontrivial example). If the text of a formula is damaged inspect the attached original page. If still ambiguous set verifiable false. If no exercise is supplied, write one original question that tests the listed objectives directly from this chapter. For a transfer, the original item and its checked solution specify the exact reasoning to reassess. Require the learner to apply the same reasoning at a comparable difficulty in a materially different case. For a proof, use a new concrete decision, counterexample or application. Simply renaming variables or restating the original theorem in equivalent notation repeats the same question. Ask ONE unaided question. Do not introduce additional parts of a broader learning objective, and do not include a hint in the question. Identify the precise tested skill. Mark a parent objective as fullyTested only if the item tests the entire stated outcome, including every substantive component. Testing one component warrants partial credit only. Return {"question":"...","transcription":"...","objectives":["relevant ids"],"fullyTested":["ids assessed in full"],"testedSkill":"specific reasoning this question assesses","rubric":"reasoned solution and criteria","check":"explicit independent verification","verifiable":true}.`;
 export const gradePrompt = `Evaluate the learner response to the current item against the rubric. Accept equivalent correct reasoning. Partial, wrong or "don't know" starts a Socratic exchange: ask one smaller question without revealing the solution. As substeps are solved, return to the whole original problem and ask the learner to complete it. Never declare success for answering only a scaffold question. On complete correct reasoning for the whole item use solved=true. Otherwise solved=false. Set assisted=true when giving a hint, diagnosing a wrong answer or scaffolding. Return {"reply":"feedback or one question","solved":false,"assisted":true}.`;
 
-export function sectionContext(section) {
-  return { section: section.title, subsections: section.subsections, reading: sourceFor(section) };
+export function sectionContext(book, chapter, index) {
+  const section = chapter.sections[index];
+  const opening = index === 0 ? chapterOpening(book, chapter) : [];
+  return {
+    section: section.title,
+    subsections: section.subsections,
+    reading: sourceFor({ parts: [...opening, ...section.parts] }),
+  };
 }

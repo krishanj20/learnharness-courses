@@ -1,6 +1,6 @@
 ## ADDED Requirements
 
-### Requirement: One mini-lesson per chapter
+### Requirement: Section lessons in each chapter
 The tutor SHALL organise the chapter lesson around the book’s sections in order, with a page-linked reading assignment before questioning on each section.
 
 #### Scenario: Before reading
@@ -13,7 +13,7 @@ The tutor SHALL organise the chapter lesson around the book’s sections in orde
 
 #### Scenario: Next section
 - **WHEN** the discussion advances to §1.2
-- **THEN** the new reading assignment appears in the existing chapter chat and the tutor waits for that section’s acknowledgement
+- **THEN** §1.1 is marked Done in the chapter, §1.2 becomes the current lesson and the tutor waits for that section’s acknowledgement
 
 #### Scenario: Chapter without sections
 - **WHEN** the learner opens an unsectioned chapter
@@ -22,3 +22,13 @@ The tutor SHALL organise the chapter lesson around the book’s sections in orde
 #### Scenario: Resume after acknowledgement
 - **WHEN** the learner closes the app after answering the first question
 - **THEN** reopening restores the section and conversation without restarting the reading gate
+
+#### Scenario: Begin with the introduction
+- **WHEN** a learner opens Chapter 2’s first assignment
+- **THEN** the continuous reader starts on PDF page 57 and includes the introduction before §2.1
+- **AND** the tutor receives the opening text, including the part above §2.1 on PDF page 58
+
+#### Scenario: Review lesson and chapter progress
+- **WHEN** a learner returns to the chapter
+- **THEN** the chapter lists every section in order with its completion status and the learner can review finished lessons
+- **AND** finishing the chapter exam marks the chapter Done in the chapter list

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { before, describe, it } from 'node:test';
 import { extractBook } from '../src/pdf.mjs';
-import { planningSource } from '../src/model.mjs';
+import { planningSource, sectionContext } from '../src/model.mjs';
 
 // The publisher's draft is a local acceptance input. Keep it outside the repository.
 const path = process.env.EQI_PDF;
@@ -129,6 +129,15 @@ describe('14 August 2024 EQI draft', { skip: !path && 'Set EQI_PDF to the local 
     const planning = planningSource(book, first);
     assert.match(planning.opening, /What are the sources of excess returns/i);
     assert.match(planning.closing, /The Takeaways/i);
+  });
+
+  it('teaches the entire Chapter 2 introduction before §2.1, including the shared heading page', () => {
+    const ch = book.chapters[1];
+    const context = sectionContext(book, ch, 0);
+    assert.match(context.reading, /How do we define returns for equities/i);
+    assert.match(context.reading, /These models will be your friends for life/i);
+    assert.match(context.reading, /2\.1\.1\. Definitions/);
+    assert.doesNotMatch(sectionContext(book, ch, 1).reading, /These models will be your friends for life/i);
   });
 
   it('finds embedded Exercise 4.1 and retains its third part without the following subsection', () => {

@@ -1,6 +1,7 @@
 import { GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import worker from 'bundled-pdf-worker';
 import { openPdf, extractBook } from './pdf.mjs';
+import { scrollReader } from './reader.mjs';
 
 const el = (tag, text, cls) => {
   const n = document.createElement(tag);
@@ -41,13 +42,13 @@ export function activate(ctx) {
         docBook,
         locked = false,
         widgets = [],
-        readerPage,
-        renderId = 0,
+        closeReader,
         rawBook,
         openPlan = false;
       const dispose = () => {
         widgets.splice(0).forEach((w) => w.dispose());
-        renderId++;
+        closeReader?.();
+        closeReader = null;
       };
       const forgetPdf = () => {
         docTask?.destroy().catch(() => {});
@@ -283,19 +284,19 @@ export function activate(ctx) {
           row.append(
             button(i + 1 + '. ' + ch.title, async () => {
               index = i;
-              readerPage = null;
               openPlan = false;
               await loadChat();
             }),
             el(
               'p',
-              ch.objectives
-                ? (ch.override ?? ch.recommendation.choice) +
+              (ch.phase === 'complete' ? 'Chapter done · ' : '') +
+                (ch.objectives
+                  ? (ch.override ?? ch.recommendation.choice) +
                     ' · ' +
                     (ch.recommendation.gaps.length
                       ? ch.recommendation.gaps.length + ' objectives to cover'
                       : 'Evidence for every objective')
-                : 'Awaiting plan · ' + ch.sections.length + ' readings',
+                  : 'Awaiting plan · ' + ch.sections.length + ' readings'),
             ),
           );
           body.append(row);
@@ -400,6 +401,13 @@ export function activate(ctx) {
       function reading(ch, s) {
         const box = el('section', null, 'bc-reading');
         box.append(el('h2', 'Read ' + (s.number ? '§' + s.number + ' · ' : '') + s.title), el('p', span(s)));
+        if (s.includesIntroduction)
+          box.append(
+            el(
+              'p',
+              'Start with the chapter introduction before ' + (s.number ? '§' + s.number : s.title) + '.',
+            ),
+          );
         if (s.stop) box.append(el('p', 'Stop at “' + s.stop + '”.'));
         if (s.uncertain)
           box.append(
@@ -412,41 +420,12 @@ export function activate(ctx) {
         body.append(box);
       }
       async function openReader(start, end) {
-        const d = await pdf();
+        const doc = await pdf();
+        const labels = await doc.getPageLabels();
         reset();
-        navigation(
-          button('Back to lesson', () => {
-            readerPage = null;
-            paintChat();
-          }),
-          backToChapters(),
-        );
-        readerPage = Math.max(start, Math.min(end, readerPage ?? start));
-        const labels = await d.getPageLabels();
-        heading('h2', 'Printed p. ' + (labels?.[readerPage - 1] ?? readerPage) + ' · PDF p. ' + readerPage);
-        if (readerPage > start)
-          body.append(
-            button('Previous page', () => {
-              readerPage--;
-              return openReader(start, end);
-            }),
-          );
-        if (readerPage < end)
-          body.append(
-            button('Next page', () => {
-              readerPage++;
-              return openReader(start, end);
-            }),
-          );
-        const token = renderId,
-          canvas = await canvasFor(readerPage);
-        if (token !== renderId || signal.aborted) return;
-        body.append(canvas);
-        const page = await d.getPage(readerPage),
-          text = await page.getTextContent();
-        const detail = el('details');
-        detail.append(el('summary', 'Page text'), el('p', text.items.map((x) => x.str).join(' ')));
-        body.append(detail);
+        navigation(button('Back to lesson', paintChat), backToChapters());
+        closeReader = await scrollReader(body, doc, labels, start, end);
+        if (signal.aborted) closeReader();
       }
       async function turn(action, text) {
         const ch = course.chapters[index],
@@ -472,6 +451,14 @@ export function activate(ctx) {
           'Preparing the chapter exam…',
         );
       }
+      function messages(parent, transcript) {
+        for (const m of transcript) {
+          const block = el('article', null, 'bc-message ' + (m.role === 'learner' ? 'bc-learner' : ''));
+          block.append(el('strong', m.role === 'learner' ? 'You' : 'Tutor'));
+          markdown(block, m.text);
+          parent.append(block);
+        }
+      }
       function paintChat() {
         reset();
         const ch = course.chapters[index],
@@ -491,29 +478,44 @@ export function activate(ctx) {
             ),
           );
         } else plan(ch);
-        const contents = el('details');
-        contents.append(el('summary', 'Chapter readings'));
-        contents.append(
-          button('Open whole chapter · PDF pp. ' + ch.start + '–' + ch.end, () => {
-            readerPage = null;
-            return openReader(ch.start, ch.end);
-          }),
-        );
-        for (const unit of ch.sections)
-          contents.append(
-            button((unit.number ? unit.number + ' · ' : '') + unit.title + ' · ' + span(unit), () => {
-              readerPage = null;
-              return openReader(unit.start, unit.end);
-            }),
-          );
-        body.append(contents);
-        if (['reading', 'discussion'].includes(chat.phase)) reading(ch, s);
-        for (const m of chat.messages) {
-          const block = el('article', null, 'bc-message ' + (m.role === 'learner' ? 'bc-learner' : ''));
-          block.append(el('strong', m.role === 'learner' ? 'You' : 'Tutor'));
-          markdown(block, m.text);
-          body.append(block);
+        const studying = ['reading', 'discussion'].includes(chat.phase);
+        const completed = studying ? chat.section : ch.sections.length;
+        heading('h2', chat.phase === 'complete' ? 'Chapter done' : 'Chapter lessons');
+        body.append(el('p', completed + ' of ' + ch.sections.length + ' lessons done'));
+        const lessons = el('ol', null, 'bc-lessons');
+        for (const [i, unit] of ch.sections.entries()) {
+          const row = el('li');
+          const detail = el('details');
+          const label = (unit.number ? '§' + unit.number + ' · ' : '') + unit.title;
+          const status = i < completed ? 'Done' : i === chat.section ? 'Current lesson' : 'Upcoming';
+          detail.append(el('summary', label + ' · ' + status));
+          detail.append(button('Read ' + label + ' · ' + span(unit), () => openReader(unit.start, unit.end)));
+          const range = chat.lessonRanges?.[i];
+          if (range) messages(detail, chat.messages.slice(range.start, range.end));
+          row.append(detail);
+          lessons.append(row);
         }
+        body.append(
+          lessons,
+          button('Open whole chapter · PDF pp. ' + ch.start + '–' + ch.end, () =>
+            openReader(ch.start, ch.end),
+          ),
+        );
+        // Older versions kept only the current lesson boundary. Keep any earlier
+        // turns available together when their individual lessons are unknown.
+        const known = Object.values(chat.lessonRanges ?? {});
+        const firstKnown = known.length
+          ? Math.min(...known.map((r) => r.start))
+          : (chat.sectionTurnStart ?? 0);
+        if (firstKnown > 0) {
+          const older = el('details');
+          older.append(el('summary', 'Earlier chapter conversation'));
+          messages(older, chat.messages.slice(0, firstKnown));
+          body.append(older);
+        }
+        if (studying) reading(ch, s);
+        const from = studying ? chat.sectionTurnStart : (chat.examTurnStart ?? chat.sectionTurnStart);
+        messages(body, chat.messages.slice(from ?? 0));
         if (chat.pending) {
           body.append(
             el('p', 'Your answer is saved. Reconnect to the model to continue.'),
@@ -534,7 +536,6 @@ export function activate(ctx) {
                   (item.hintOrigin ? ' · ' + item.hintOrigin : ''),
               ),
               button('View source page', () => {
-                readerPage = null;
                 return openReader(item.page, item.endPage ?? item.page);
               }),
             );
@@ -547,8 +548,8 @@ export function activate(ctx) {
             body.append(
               button(
                 chat.section + 1 < ch.sections.length
-                  ? 'Continue to next reading'
-                  : 'Finish reading and open chapter exam',
+                  ? 'Finish lesson and start next lesson'
+                  : 'Finish lesson and open chapter exam',
                 () => act('next', {}, 'Saving progress…'),
                 true,
               ),

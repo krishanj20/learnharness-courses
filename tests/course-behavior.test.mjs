@@ -324,6 +324,11 @@ test('same-titled chapter chats stay separate; a skipped chapter can be reopened
   const second = await h.call('next');
   assert.equal(second.phase, 'reading');
   assert.equal(second.section, 1);
+  h.restart();
+  const resumed = await h.call('chat');
+  assert.deepEqual(resumed.lessonRanges, { 0: { start: 0, end: chat.messages.length } });
+  assert.equal(resumed.sectionTurnStart, chat.messages.length);
+  assert.equal(resumed.section, 1);
   await assert.rejects(h.call('turn', { action: 'answer', text: 'Next' }), /reading/);
   h.reply((i) => {
     assert.match(i.reading, /Capacity limits/);

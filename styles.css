@@ -122,3 +122,23 @@
 .book-courses .bc-message strong:first-child {
   font-size: 0.85rem;
 }
+.book-courses .bc-reader article {
+  margin: 1.5rem 0 2rem;
+}
+.book-courses .bc-page {
+  width: 100%;
+  background: white;
+  color: #222;
+}
+.book-courses .bc-page canvas {
+  width: 100%;
+  margin: 0;
+}
+.book-courses .bc-lessons {
+  list-style: none;
+  padding: 0;
+}
+.book-courses .bc-lessons details {
+  margin: 0;
+  padding: 0.3rem 0;
+}

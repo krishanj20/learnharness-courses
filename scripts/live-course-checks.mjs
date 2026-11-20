@@ -56,18 +56,19 @@ export async function runCourseChecks({
     '496-page file selected through Create course and stored byte-for-byte, with 14 chapters and Chapter 10 exercises on 355 and 361',
   );
   await click(chapter);
-  await see('Printed pp. 7–9 · PDF pp. 35–37', '.bc-reading');
+  await see('Printed pp. 5–9 · PDF pp. 33–37', '.bc-reading');
   await see('Modes of Exchange', '.bc-reading');
   assert.equal(await page().$('.bc-message'), null);
   await click('Open assigned pages');
-  for (const number of [35, 36, 37]) {
+  await page().waitForSelector('.bc-page[data-page="33"]');
+  for (const number of [33, 34, 35, 36, 37]) {
+    await page().$eval('[data-page="' + number + '"]', (slot) => slot.scrollIntoView({ block: 'center' }));
     await page().waitForSelector('canvas[aria-label="Original PDF page ' + number + '"]');
-    if (number < 37) await click('Next page');
   }
   await click('Back to lesson');
-  await see('Printed pp. 7–9 · PDF pp. 35–37', '.bc-reading');
+  await see('Printed pp. 5–9 · PDF pp. 33–37', '.bc-reading');
   await observe(
-    'Reader rendered PDF pages 35, 36 and 37 with no tutor question before the reading acknowledgement',
+    'Reader scrolled through PDF pages 33–37 with no tutor question before the reading acknowledgement',
   );
   await click('Prepare chapter plan');
   await see('I’ve read this section', '.bc-reading');
@@ -88,9 +89,9 @@ export async function runCourseChecks({
   await see('Retry saved turn', '.book-courses');
   await see(message, '.book-courses');
   await click('Open assigned pages');
-  await page().waitForSelector('canvas[aria-label="Original PDF page 35"]');
+  await page().waitForSelector('canvas[aria-label="Original PDF page 33"]');
   await observe(
-    'Offline cold start reopened the saved answer, retry control and original page 35 after the selected file was moved',
+    'Offline cold start reopened the saved answer, retry control and original page 33 after the selected file was moved',
   );
   await stop();
   await launch();
@@ -99,12 +100,16 @@ export async function runCourseChecks({
   await click(title);
   await click(chapter);
   await click('Retry saved turn');
-  await see('Continue to next reading', '.book-courses');
+  await see('Finish lesson and start next lesson', '.book-courses');
   let chat = await call('chat', { id, chapter: 0 });
   assert.equal(chat.messages.filter((m) => m.text === message).length, 1);
-  await click('Continue to next reading');
+  await click('Finish lesson and start next lesson');
   await see('Modes of Exchange', '.bc-reading h2');
   await observe('Reconnect resumed the saved answer once and §1.2 reopened the reading gate');
+  await see('§1.1 · The Securities · Done', '.bc-lessons');
+  await see('§1.2 · Modes of Exchange · Current lesson', '.bc-lessons');
+  await page().$eval('.bc-lessons summary', (summary) => summary.click());
+  await see(message, '.bc-lessons');
   const saved = await call('chat', { id, chapter: 0 });
   await click('Open assigned pages');
   await page().waitForSelector('canvas[aria-label="Original PDF page 37"]');
@@ -127,12 +132,23 @@ export async function runCourseChecks({
   await observe(
     'Returned from scrolled PDF to chapters, then to all courses; reopening restored §1.2 and its transcript. The lesson also returned directly to chapters.',
   );
+  await click('2. ' + course.chapters[1].title);
+  await see('0 of 4 lessons done', '.book-courses');
+  await see('§2.4 · Appendix · Upcoming', '.bc-lessons');
+  await see('Start with the chapter introduction before §2.1.', '.bc-reading');
+  await click('Open assigned pages');
+  await page().waitForSelector('canvas[aria-label="Original PDF page 57"]');
+  await page().$eval('[data-page="58"]', (el) => el.scrollIntoView({ block: 'start' }));
+  await page().waitForSelector('canvas[aria-label="Original PDF page 58"]');
+  assert.equal(await page().$$eval('.bc-page', (pages) => pages.at(-1).dataset.page), '69');
+  await click('Back to chapters');
+  await observe(
+    'Chapter 2 showed all four lessons and the first assignment scrolled from the chapter opening on PDF p. 57 through §2.1.',
+  );
   await call('prepare', { id, chapter: 2 });
   assert.ok(
     fixture.requests.some((r) =>
-      r.priorAnswers?.some(
-        (a) => a.answer === learnerAnswer && a.id === 'course_test_teach/answer',
-      ),
+      r.priorAnswers?.some((a) => a.answer === learnerAnswer && a.id === 'course_test_teach/answer'),
     ),
   );
   await observe(
@@ -181,7 +197,13 @@ export async function runCourseChecks({
         text: 'I apply the chapter assumption in a second worked example.',
       });
     }
-    if (index === 0) assert.equal(state.phase, 'complete');
+    if (index === 0) {
+      assert.equal(state.phase, 'complete');
+      await click(chapter);
+      await see('5 of 5 lessons done', '.book-courses');
+      await click('Back to chapters');
+      await see('Chapter done', '.bc-card');
+    }
     await observe(
       index === 0
         ? 'Packaged backend completed Chapter 1’s generated exam using the scripted model'

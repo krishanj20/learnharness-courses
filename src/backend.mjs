@@ -10,6 +10,7 @@ import {
   prepareExamPrompt,
   gradePrompt,
   sectionContext,
+  chapterOpening,
 } from './model.mjs';
 import {
   initialChat,
@@ -74,13 +75,23 @@ export function activate(ctx) {
         !ch.chat.results.length)
     );
   }
-  function publicCourse(c) {
+  function publicCourse(c, source = book(c.id)) {
     return {
       id: c.id,
       title: c.title,
       warnings: c.warnings,
-      chapters: c.chapters.map(({ chat, ...ch }) => ({
+      chapters: c.chapters.map(({ chat, ...ch }, i) => ({
         ...ch,
+        sections: ch.sections.map((s, j) =>
+          j === 0
+            ? {
+                ...s,
+                start: ch.start,
+                firstLabel: source.pages[ch.start - 1].label,
+                includesIntroduction: chapterOpening(source, source.chapters[i]).length > 0,
+              }
+            : s,
+        ),
         needsPlan: needsPlan({ ...ch, chat }),
         phase: chat.phase,
       })),
@@ -146,7 +157,7 @@ export function activate(ctx) {
     const sourceFile =
       'source-' + createHash('sha256').update(JSON.stringify(source)).digest('hex') + '.json';
     if (existing?.sourceFile === sourceFile && existing.chapters.every((ch) => 'mathPage' in ch))
-      return publicCourse(existing);
+      return publicCourse(existing, source);
     const c = {
       id,
       title: source.title,
@@ -193,7 +204,7 @@ export function activate(ctx) {
     save(id, c);
     if (existing && existing.sourceFile !== sourceFile)
       fs.rmSync(path(id, existing.sourceFile ?? 'source.json'), { force: true });
-    return publicCourse(c);
+    return publicCourse(c, source);
   });
   ctx.handle('course', ({ id }) => publicCourse(state(id)));
   ctx.handle('pdf', ({ id, offset = 0 }) => {
@@ -347,11 +358,15 @@ export function activate(ctx) {
       const c = ch.chat;
       if (c.phase !== 'discussion' || c.pending || !c.ready)
         throw Error('Finish the current discussion before advancing.');
+      (c.lessonRanges ??= {})[c.section] = { start: c.sectionTurnStart ?? 0, end: c.messages.length };
       if (c.section + 1 < ch.sections.length) {
         c.section++;
         c.phase = 'reading';
         c.sectionTurnStart = c.messages.length;
-      } else c.phase = 'exam-ready';
+      } else {
+        c.examTurnStart = c.messages.length;
+        c.phase = 'exam-ready';
+      }
       c.ready = false;
     }),
   );
@@ -359,7 +374,8 @@ export function activate(ctx) {
     edit(a, async (ch, checkpoint) => {
       ref(ch);
       const c = ch.chat,
-        source = book(a.id).chapters[a.chapter],
+        b = book(a.id),
+        source = b.chapters[a.chapter],
         images = imageList(a);
       if (!c.pending) {
         if (c.phase === 'reading' && a.action !== 'read')
@@ -434,7 +450,7 @@ export function activate(ctx) {
           ctx,
           discussionPrompt,
           {
-            ...sectionContext(source.sections[c.section]),
+            ...sectionContext(b, source, c.section),
             chapter: source.title,
             objectives,
             alreadyDemonstrated: c.covered,

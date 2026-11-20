@@ -42,3 +42,9 @@ The signed-in desktop model check covered full-book planning and the first Socra
 ## Navigation in Courses 0.1.1
 
 On 20 November 2026 the stock desktop test imported the same EQI PDF in a disposable profile. After moving on to §1.2, it scrolled the assigned PDF page and clicked the visible **Back to chapters** button. The chapter list focused Chapter 1. **Back to all courses** returned focus to the book. Reopening Chapter 1 restored §1.2 and the saved transcript. The test also returned from the PDF to the lesson and from the lesson to the chapter list.
+
+## Section lessons and scrolling in Courses 0.1.2
+
+On 20 November 2026 the stock desktop test scrolled the original EQI pages in a continuous reader. Chapter 2 displayed four lesson entries before any teaching, with §2.1 current and §2.2–2.4 upcoming. The first assignment spanned printed pp. 29–41 (PDF pp. 57–69), starting with the opening questions. The tutor-input test located both those questions and the introduction that continues above the §2.1 heading on p. 58. The first assignment also reopened offline.
+
+Finishing Chapter 1’s first lesson marked §1.1 Done, kept its discussion available in its lesson entry and opened §1.2 at the reading gate. The backend restart check preserved the active section and prior transcript boundary. After the test completed the chapter exam, the chapter list showed Chapter done. These progression checks used a disposable profile and scripted answers.
