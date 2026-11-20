@@ -324,12 +324,6 @@ export async function runSyntheticChecks({
   stop,
   launch,
 }) {
-  async function enterReasoning(reasoning) {
-    const selector = '[data-testid="thinking-field"] [role="textbox"]';
-    await page().focus(selector);
-    await page().keyboard.sendCharacter(reasoning);
-    await page().waitForFunction((s, text) => document.querySelector(s)?.textContent.includes(text), {}, selector, reasoning);
-  }
   const call = async (operation, input) =>
     (await api('/api/plugins/book-courses/call', 'POST', { operation, input })).result;
   await click('Courses');
