@@ -94,6 +94,7 @@ export function activate(ctx) {
         ),
         needsPlan: needsPlan({ ...ch, chat }),
         phase: chat.phase,
+        lessonsDone: ['reading', 'discussion'].includes(chat.phase) ? chat.section : ch.sections.length,
       })),
     };
   }

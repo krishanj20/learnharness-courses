@@ -289,14 +289,21 @@ export function activate(ctx) {
             }),
             el(
               'p',
-              (ch.phase === 'complete' ? 'Chapter done · ' : '') +
-                (ch.objectives
-                  ? (ch.override ?? ch.recommendation.choice) +
-                    ' · ' +
-                    (ch.recommendation.gaps.length
-                      ? ch.recommendation.gaps.length + ' objectives to cover'
-                      : 'Evidence for every objective')
-                  : 'Awaiting plan · ' + ch.sections.length + ' readings'),
+              ch.phase === 'complete'
+                ? 'Chapter done · ' + ch.sections.length + ' lessons'
+                : ch.lessonsDone
+                  ? ch.lessonsDone +
+                    ' of ' +
+                    ch.sections.length +
+                    ' lessons done' +
+                    (ch.lessonsDone === ch.sections.length ? ' · Chapter exam' : '')
+                  : ch.objectives
+                    ? (ch.override ?? ch.recommendation.choice) +
+                      ' · ' +
+                      (ch.recommendation.gaps.length
+                        ? ch.recommendation.gaps.length + ' objectives to cover'
+                        : 'Evidence for every objective')
+                    : 'Awaiting plan · ' + ch.sections.length + ' readings',
             ),
           );
           body.append(row);
@@ -419,11 +426,14 @@ export function activate(ctx) {
           box.append(button('I’ve read this section', () => turn('read'), true));
         body.append(box);
       }
-      async function openReader(start, end) {
+      async function openReader(start, end, lessonIndex = null) {
         const doc = await pdf();
         const labels = await doc.getPageLabels();
         reset();
-        navigation(button('Back to lesson', paintChat), backToChapters());
+        navigation(
+          button('Back to lesson', () => paintChat(lessonIndex)),
+          backToChapters(),
+        );
         closeReader = await scrollReader(body, doc, labels, start, end);
         if (signal.aborted) closeReader();
       }
@@ -459,7 +469,7 @@ export function activate(ctx) {
           parent.append(block);
         }
       }
-      function paintChat() {
+      function paintChat(reviewLesson = null) {
         reset();
         const ch = course.chapters[index],
           s = ch.sections[chat.section];
@@ -479,7 +489,7 @@ export function activate(ctx) {
           );
         } else plan(ch);
         const studying = ['reading', 'discussion'].includes(chat.phase);
-        const completed = studying ? chat.section : ch.sections.length;
+        const completed = ch.lessonsDone;
         heading('h2', chat.phase === 'complete' ? 'Chapter done' : 'Chapter lessons');
         body.append(el('p', completed + ' of ' + ch.sections.length + ' lessons done'));
         const lessons = el('ol', null, 'bc-lessons');
@@ -489,7 +499,10 @@ export function activate(ctx) {
           const label = (unit.number ? '§' + unit.number + ' · ' : '') + unit.title;
           const status = i < completed ? 'Done' : i === chat.section ? 'Current lesson' : 'Upcoming';
           detail.append(el('summary', label + ' · ' + status));
-          detail.append(button('Read ' + label + ' · ' + span(unit), () => openReader(unit.start, unit.end)));
+          detail.open = i === reviewLesson;
+          detail.append(
+            button('Read ' + label + ' · ' + span(unit), () => openReader(unit.start, unit.end, i)),
+          );
           const range = chat.lessonRanges?.[i];
           if (range) messages(detail, chat.messages.slice(range.start, range.end));
           row.append(detail);
@@ -501,6 +514,7 @@ export function activate(ctx) {
             openReader(ch.start, ch.end),
           ),
         );
+        if (reviewLesson != null) lessons.children[reviewLesson].querySelector('button').focus();
         // Older versions kept only the current lesson boundary. Keep any earlier
         // turns available together when their individual lessons are unknown.
         const known = Object.values(chat.lessonRanges ?? {});

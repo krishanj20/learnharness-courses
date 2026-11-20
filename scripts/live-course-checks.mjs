@@ -110,6 +110,12 @@ export async function runCourseChecks({
   await see('§1.2 · Modes of Exchange · Current lesson', '.bc-lessons');
   await page().$eval('.bc-lessons summary', (summary) => summary.click());
   await see(message, '.bc-lessons');
+  const reviewReading = 'Read §1.1 · The Securities · Printed pp. 5–9 · PDF pp. 33–37';
+  await click(reviewReading);
+  await page().waitForSelector('canvas[aria-label="Original PDF page 33"]');
+  await click('Back to lesson');
+  await see(message, '.bc-lessons details[open]');
+  assert.equal(await page().evaluate(() => document.activeElement.textContent), reviewReading);
   const saved = await call('chat', { id, chapter: 0 });
   await click('Open assigned pages');
   await page().waitForSelector('canvas[aria-label="Original PDF page 37"]');
