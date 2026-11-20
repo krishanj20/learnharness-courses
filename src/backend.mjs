@@ -1,3 +1,4 @@
+import { registerTeaching } from './native-teaching.mjs';
 import fs from 'node:fs';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -98,6 +99,13 @@ export function activate(ctx) {
       })),
     };
   }
+  registerTeaching(ctx, {
+    state,
+    book,
+    save,
+    busy,
+    ids: () => fs.readdirSync(root).filter((id) => isId(id) && fs.existsSync(path(id, 'course.json'))),
+  });
   ctx.handle('list', () =>
     fs
       .readdirSync(root)
@@ -147,7 +155,12 @@ export function activate(ctx) {
           ch.title === updated.title &&
           ch.sections.length === updated.sections.length &&
           ch.sections.every(
-            (s, j) => s.title === updated.sections[j].title && s.number === updated.sections[j].number,
+            (s, j) =>
+              s.title === updated.sections[j].title &&
+              s.number === updated.sections[j].number &&
+              (!ch.teaching ||
+                JSON.stringify((s.subsections ?? []).map((p) => p.title)) ===
+                  JSON.stringify((updated.sections[j].subsections ?? []).map((p) => p.title))),
           )
         );
       });

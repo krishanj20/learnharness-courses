@@ -32,3 +32,17 @@ The tutor SHALL organise the chapter lesson around the book’s sections in orde
 - **WHEN** a learner returns to the chapter
 - **THEN** the chapter lists every section in order with its completion status and the learner can review finished lessons
 - **AND** finishing the chapter exam marks the chapter Done in the chapter list
+
+### Requirement: Adaptive native Teaching for each subpoint
+Courses SHALL open a regular LearnHarness Teaching session for each book subheading after reading and reuse that session when resumed. A section without subheadings SHALL have one Teaching session.
+
+#### Scenario: Opening diagnostic after reading
+- **WHEN** the learner starts the first Teaching in a chapter
+- **THEN** the tutor receives the assigned passages and chapter objectives and probes the learner’s understanding using native questions
+- **AND** the learner can use the host’s normal answering and dictation controls
+
+#### Scenario: Partial or complete prior understanding
+- **WHEN** the learner returns to Courses from a linked Teaching
+- **THEN** Courses opens that chapter and credits the subpoints demonstrated independently in saved answers
+- **AND** the next Teaching addresses an outstanding subpoint, or the chapter exam opens for study if all subpoints are demonstrated
+- **AND** an unanswered or incorrect question earns no mastery credit

@@ -5,6 +5,22 @@ import { once } from 'node:events';
 
 const id = 'book-course-smoke';
 function logicalReply(instruction, input) {
+  if (Array.isArray(input.targets)) {
+    const answer = input.answers.find((a) =>
+      a.answer.includes('Divide the price change by the initial price'),
+    );
+    return {
+      demonstrated: answer
+        ? [
+            {
+              point: '1.1',
+              answerIds: [answer.id],
+              reason: 'Computed a simple return from the initial and final prices.',
+            },
+          ]
+        : [],
+    };
+  }
   if (instruction.includes('"sections"')) {
     return {
       sections: input.sections.map((section) => {
@@ -73,9 +89,7 @@ export async function startFixture() {
       }
       if (!connected) {
         res.writeHead(400);
-        return res.end(
-          JSON.stringify({ error: { message: 'Disconnected in the desktop scenario' } }),
-        );
+        return res.end(JSON.stringify({ error: { message: 'Disconnected in the desktop scenario' } }));
       }
       let raw = '';
       for await (const chunk of req) raw += chunk;
@@ -83,21 +97,64 @@ export async function startFixture() {
       const instruction =
         body.messages.find((m) => m.role === 'system' || m.role === 'developer')?.content || '';
       const prompt = body.messages.find((m) => m.role === 'user')?.content;
-      const input = JSON.parse(
-        typeof prompt === 'string' ? prompt : prompt.find((x) => x.type === 'text').text,
-      );
-      requests.push(input);
-      if (
-        input.exercise?.id &&
-        Array.isArray(prompt) &&
-        prompt.some((part) => part.type === 'image_url')
-      )
-        visualExamExercises.push(input.exercise.id);
-      const result = logicalReply(instruction, input);
+      const hasCourse = body.tools?.some((t) => t.function.name === 'course_reading');
+      let delta, finish;
+      if (hasCourse) {
+        const sourceResult = body.messages.find(
+          (m) => m.role === 'tool' && JSON.stringify(m.content).includes('chapterMap'),
+        );
+        const returns = JSON.stringify(prompt).includes('Returns: Properties and Models');
+        const correct = returns ? 'Ten percent' : 'Portable claim';
+        const answered = body.messages.some((m) => m.role === 'tool' && m.tool_call_id === 'native-probe');
+        if (answered) {
+          delta = { role: 'assistant', content: 'Return to Courses to check your progress.' };
+          finish = 'stop';
+        } else {
+          const name = sourceResult ? 'probe' : 'course_reading';
+          const args = sourceResult
+            ? {
+                question: returns
+                  ? 'What is the simple return when the price rises from 100 to 110?'
+                  : 'Which feature lets a security change hands?',
+                options: [{ label: correct }, { label: returns ? 'One percent' : 'Fixed owner' }],
+                explanation: returns
+                  ? 'Divide the gain of ten by the initial hundred.'
+                  : 'The claim can pass to another holder.',
+                correctAnswer: correct,
+              }
+            : {};
+          delta = {
+            role: 'assistant',
+            tool_calls: [
+              {
+                index: 0,
+                id: 'native-' + name,
+                type: 'function',
+                function: { name, arguments: JSON.stringify(args) },
+              },
+            ],
+          };
+          finish = 'tool_calls';
+        }
+        requests.push({ native: true, sourceRead: !!sourceResult });
+      } else {
+        const rawInput = typeof prompt === 'string' ? prompt : prompt?.find((x) => x.type === 'text')?.text;
+        let input;
+        try {
+          input = JSON.parse(rawInput);
+        } catch {
+          input = {};
+        }
+        requests.push(input);
+        if (input.exercise?.id && Array.isArray(prompt) && prompt.some((part) => part.type === 'image_url'))
+          visualExamExercises.push(input.exercise.id);
+        delta = { role: 'assistant', content: JSON.stringify(logicalReply(instruction, input)) };
+        finish = 'stop';
+      }
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
-      for (const [delta, finish_reason] of [
-        [{ role: 'assistant', content: JSON.stringify(result) }, null],
-        [{}, 'stop'],
+      for (const [part, finish_reason] of [
+        [delta, null],
+        [{}, finish],
       ]) {
         res.write(
           'data: ' +
@@ -106,7 +163,7 @@ export async function startFixture() {
               model: id,
               object: 'chat.completion.chunk',
               created: 1,
-              choices: [{ index: 0, delta, finish_reason }],
+              choices: [{ index: 0, delta: part, finish_reason }],
             }) +
             '\n\n',
         );

@@ -132,7 +132,7 @@ async function click(name) {
     (name) =>
       [...document.querySelectorAll('button')].find(
         (button) =>
-          !button.disabled &&
+          !button.disabled && !button.closest('[aria-busy="true"]') &&
           (button.textContent.trim() === name || button.getAttribute('aria-label') === name),
       ),
     {},

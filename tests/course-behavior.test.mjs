@@ -55,13 +55,16 @@ function host(t, chapters = [chapter(solo)], sessions = [], nodes = []) {
   }));
   const source = { title: 'Synthetic investing book', warnings: [], chapters, pages };
   const requests = [];
-  let handle, nextReply;
+  let handle, nextReply, teachingTools;
   const restart = () => {
     handle = new Map();
     activate({
       dataDirectory: root,
       signal: new AbortController().signal,
       handle: (name, fn) => handle.set(name, fn),
+      registerTools: (factory) => {
+        teachingTools = factory;
+      },
       learning: {
         graph: () => ({ nodes, propositions: nodes }),
         listSessions: () => sessions.map(({ id, title }) => ({ id, title })),
@@ -97,6 +100,7 @@ function host(t, chapters = [chapter(solo)], sessions = [], nodes = []) {
     id,
     source,
     requests,
+    tools: (chatId) => teachingTools.create({ chatId, agent: 'prober' }),
     reply(f) {
       nextReply = typeof f === 'function' ? f : () => f;
     },
@@ -198,7 +202,10 @@ test('a partial import survives a restart and retry publishes one complete local
   const first = bytes.subarray(0, 9);
   assert.equal(await upload(0, first), first.length);
   h.restart();
-  assert.equal((await h.call('list')).some((c) => c.id === id), false);
+  assert.equal(
+    (await h.call('list')).some((c) => c.id === id),
+    false,
+  );
   assert.equal(await upload(0, first), first.length);
   assert.equal(await upload(first.length, bytes.subarray(first.length)), bytes.length);
   await h.call('import', { id, source: h.source });
@@ -606,4 +613,84 @@ test('each placement anchor resolves to actual text in the assigned section, inc
       [2, capacity],
     ],
   );
+});
+
+test('native Teaching scopes the first diagnostic to the book and credits only demonstrated subpoints', async (t) => {
+  const ch = chapter(sections);
+  ch.sections[0].subsections = [
+    { title: 'Dispersion', start: 1 },
+    { title: 'Ratios', start: 1 },
+  ];
+  ch.sections[0].parts[0].text = 'Dispersion\n' + volatility + '\nRatios\nScale by risk.';
+  const sessions = [];
+  const h = host(t, [ch], sessions);
+  h.reply((i) => plan(i));
+  await h.call('prepare');
+  const start = (key) => h.call('teaching-start', { key });
+  const first = await start('1.1');
+  assert.match(first.opening, /short adaptive chapter diagnostic/);
+  await assert.rejects(start('2.1'), /Read the assigned/);
+  sessions.push({
+    id: 'native',
+    title: first.provisional,
+    kind: 'teach',
+    messages: [{ id: 'opening', role: 'user', content: first.opening }],
+  });
+  await assert.rejects(h.call('teaching-bind', { key: '1.1', sessionId: 'other' }), /cannot be linked/);
+  assert.equal((await start('1.1')).sessionId, 'native');
+  await h.call('teaching-bind', { key: '1.1', sessionId: 'native' });
+  sessions[0].title = first.title;
+  h.restart();
+  assert.deepEqual(await h.call('teaching-location', { sessionId: 'native' }), {
+    id: h.id,
+    chapter: 0,
+    key: '1.1',
+  });
+  assert.deepEqual(h.tools('unrelated'), []);
+  const [read, check] = h.tools('native');
+  const source = JSON.parse((await read.execute()).content[0].text);
+  assert.deepEqual(
+    source.chapterMap[0].points.map((p) => p.title),
+    ['Dispersion', 'Ratios'],
+  );
+  assert.match(source.assigned.pages[0].text, /Volatility/);
+  assert.doesNotMatch(source.assigned.pages[0].text, /Scale by risk|Ratios/);
+  assert.match((await check.execute()).content[0].text, /No answered/);
+  const state = () => h.call('chat');
+  assert.equal((await state()).section, 0);
+  const award = (point, id) => ({
+    point,
+    answerIds: [id],
+    reason: 'Applied the concept to an unfamiliar case.',
+  });
+  sessions[0].messages.push(
+    quiz('correct', 'How does risk change?', 'Dispersion increases'),
+    quiz('wrong', 'How does capacity change?', 'It doubles', false),
+  );
+  h.reply({ demonstrated: [award('1.1', 'correct'), award('1.2', 'invented-id'), award('2.1', 'wrong')] });
+  assert.match((await check.execute()).content[0].text, /1 of 3/);
+  const count = h.requests.length;
+  await h.call('teaching-check', { sessionId: 'native' });
+  assert.equal(h.requests.length, count);
+  assert.equal((await state()).section, 0);
+  assert.equal((await start('1.1')).started, true);
+  const second = await start('1.2');
+  assert.doesNotMatch(second.opening, /adaptive chapter diagnostic/);
+  sessions.push({ id: 'second', title: second.provisional, kind: 'teach', messages: [] });
+  await h.call('teaching-bind', { key: '1.2', sessionId: 'second' });
+  const secondSource = JSON.parse((await h.tools('second')[0].execute()).content[0].text);
+  assert.match(secondSource.assigned.pages[0].text, /Scale by risk/);
+  assert.doesNotMatch(secondSource.assigned.pages[0].text, /Volatility/);
+  sessions[1].messages.push(quiz('explain', 'How is the ratio computed?', 'Divide excess return by risk.'));
+  h.reply({ demonstrated: [award('1.2', 'explain')] });
+  await h.call('teaching-check', { sessionId: 'second' });
+  assert.equal((await state()).section, 1);
+  assert.notEqual((await state()).readSection, 1);
+  sessions[0].messages.push(
+    quiz('transferred', 'Explain capacity in a new case.', 'Market impact constrains position size.'),
+  );
+  h.reply({ demonstrated: [award('2.1', 'transferred')] });
+  await h.call('teaching-check', { sessionId: 'native' });
+  assert.equal((await state()).phase, 'exam-ready');
+  assert.equal((await h.call('course')).chapters[0].lessonsDone, 2);
 });

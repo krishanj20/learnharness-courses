@@ -22,7 +22,7 @@ function score(text, keywords) {
 }
 const questionTools = new Set(['quiz', 'explain', 'probe', 'recall', 'ask_user_question']);
 
-function nativeAnswers(messages) {
+export function nativeAnswers(messages) {
   const answers = [];
   const completed = new Set(
     messages.filter((m) => m.role === 'toolResult' && !m.isError).map((m) => m.toolCallId),

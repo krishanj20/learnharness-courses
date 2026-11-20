@@ -18,3 +18,8 @@ export function anchorPassages(part, sectionIndex) {
   flush();
   return passages;
 }
+
+export function points(section, index) {
+  const list = section.subsections?.length ? section.subsections : [section];
+  return list.map((s, p) => ({ key: index + 1 + '.' + (p + 1), title: s.title, start: s.start }));
+}

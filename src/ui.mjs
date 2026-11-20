@@ -1,3 +1,5 @@
+import { openTeaching } from './open-teaching.mjs';
+import { points } from './passages.mjs';
 import { GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import worker from 'bundled-pdf-worker';
 import { openPdf, extractBook } from './pdf.mjs';
@@ -23,7 +25,17 @@ export function activate(ctx) {
   const workerUrl = URL.createObjectURL(new Blob([worker], { type: 'text/javascript' }));
   GlobalWorkerOptions.workerSrc = workerUrl;
   ctx.signal.addEventListener('abort', () => URL.revokeObjectURL(workerUrl), { once: true });
-  ctx.registerAction({ id: 'open-courses', name: 'Courses', run: () => ctx.app.openView('library') });
+  let returning;
+  ctx.registerAction({
+    id: 'open-courses',
+    name: 'Courses',
+    run: async () => {
+      const sessionId = /^\/chat\/([\w-]+)$/.exec(ctx.app.pathname())?.[1];
+      returning = sessionId ? await ctx.call('teaching-location', { sessionId }) : null;
+      if (returning) returning.sessionId = sessionId;
+      ctx.app.openView('library');
+    },
+  });
   ctx.placeAction({ id: 'courses', actionId: 'open-courses', location: 'sidebar' });
   ctx.registerView({
     id: 'library',
@@ -405,6 +417,24 @@ export function activate(ctx) {
         }
         body.append(panel);
       }
+      async function launchPoint(point) {
+        if (!course.chapters[index].objectives) await prepare(index);
+        await openTeaching(ctx, { id: course.id, chapter: index, key: point.key });
+      }
+      function nextPoint(ch) {
+        const all = points(ch.sections[chat.section], chat.section);
+        return all.find((p) => !ch.teaching?.[p.key]?.done) ?? all[0];
+      }
+      function startButton(ch) {
+        const point = nextPoint(ch),
+          session = ch.teaching?.[point.key]?.sessionId;
+        const label = session
+          ? 'Resume Teaching · ' + point.title
+          : chat.readSection === chat.section
+            ? 'Start Teaching · ' + point.title
+            : 'I’ve read this section · Start Teaching';
+        return button(label, () => launchPoint(point), true);
+      }
       function reading(ch, s) {
         const box = el('section', null, 'bc-reading');
         box.append(el('h2', 'Read ' + (s.number ? '§' + s.number + ' · ' : '') + s.title), el('p', span(s)));
@@ -422,8 +452,19 @@ export function activate(ctx) {
           );
         if (s.subsections?.length) box.append(el('p', s.subsections.map((x) => x.title).join(' · ')));
         box.append(button('Open assigned pages', () => openReader(s.start, s.end)));
-        if (ch.objectives && chat.phase === 'reading')
-          box.append(button('I’ve read this section', () => turn('read'), true));
+        if (!chat.pending) {
+          box.append(startButton(ch));
+          const point = nextPoint(ch),
+            entry = ch.teaching?.[point.key];
+          if (entry?.sessionId)
+            box.append(
+              button('Check teaching progress', async () => {
+                const feedback = await call('teaching-check', { sessionId: entry.sessionId });
+                await loadChat();
+                show(feedback);
+              }),
+            );
+        }
         body.append(box);
       }
       async function openReader(start, end, lessonIndex = null) {
@@ -434,6 +475,16 @@ export function activate(ctx) {
           button(lessonIndex === 'exam' ? 'Back to exam' : 'Back to lesson', () => paintChat(lessonIndex)),
           backToChapters(),
         );
+        const ch = course.chapters[index],
+          assigned = ch.sections[chat.section];
+        if (
+          ['reading', 'discussion'].includes(chat.phase) &&
+          !chat.pending &&
+          (lessonIndex === null || lessonIndex === chat.section) &&
+          start === assigned.start &&
+          end === assigned.end
+        )
+          body.querySelector('nav').append(startButton(ch));
         closeReader = await scrollReader(body, doc, labels, start, end);
         if (signal.aborted) closeReader();
       }
@@ -536,6 +587,24 @@ export function activate(ctx) {
           detail.append(
             button('Read ' + label + ' · ' + span(unit), () => openReader(unit.start, unit.end, i)),
           );
+          for (const p of points(unit, i)) {
+            const entry = ch.teaching?.[p.key];
+            const line = el('div', null, 'bc-subpoint');
+            line.append(el('span', p.title + (entry?.done ? ' · Demonstrated' : '')));
+            if (entry?.done) line.append(el('small', entry.done.reason));
+            if (
+              entry?.sessionId ||
+              entry?.done ||
+              (i === chat.section && chat.readSection === i && !chat.pending)
+            )
+              line.append(
+                button(
+                  entry?.sessionId ? 'Open Teaching' : entry?.done ? 'Review in Teaching' : 'Start Teaching',
+                  () => launchPoint(p),
+                ),
+              );
+            detail.append(line);
+          }
           const range = chat.lessonRanges?.[i];
           if (range) messages(detail, chat.messages.slice(range.start, range.end));
           row.append(detail);
@@ -639,7 +708,17 @@ export function activate(ctx) {
           }
         }
       }
-      run(library);
+      const destination = returning;
+      returning = null;
+      run(async () => {
+        if (!destination) return library();
+        course = await call('course', { id: destination.id });
+        index = destination.chapter;
+        await loadChat();
+        const feedback = await call('teaching-check', { sessionId: destination.sessionId });
+        await loadChat();
+        show(feedback);
+      });
       return () => {
         dispose();
         forgetPdf();

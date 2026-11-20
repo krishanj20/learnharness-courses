@@ -72,7 +72,27 @@ export async function runCourseChecks({
   );
   await click('Prepare chapter plan');
   await see('I’ve read this section', '.bc-reading');
-  await click('I’ve read this section');
+  await click('I’ve read this section · Start Teaching');
+  await page().waitForFunction(() => location.pathname.startsWith('/chat/'));
+  const sessionId = new URL(page().url()).pathname.split('/').at(-1);
+  await see('Which feature lets a security change hands?');
+  assert.ok(fixture.requests.some((r) => r.native && r.sourceRead));
+  assert.ok(await page().$('[aria-label*="dictat" i], [title*="dictat" i]'));
+  await click('Courses');
+  await see(chapter, '.book-courses h1');
+  await see('Resume Teaching', '.bc-reading');
+  await click('Resume Teaching · The Securities');
+  await page().waitForFunction((id) => location.pathname === '/chat/' + id, {}, sessionId);
+  await see('Which feature lets a security change hands?');
+  await click('Courses');
+  await see(chapter, '.book-courses h1');
+  await observe(
+    'Assigned reading opened a regular Teaching session with its native quiz and dictation control. Courses returned to Chapter 1 and resumed the same session.',
+  );
+  // Exercise the upgrade path for discussions saved in an earlier version.
+  await call('turn', { id, chapter: 0, action: 'read' });
+  await click('Back to chapters');
+  await click(chapter);
   await page().waitForSelector('.bc-message');
   await observe('Chapter 1 opening turn appeared after acknowledgement');
   assert.ok(fixture, 'This acceptance scenario requires the scripted fixture');
@@ -121,7 +141,9 @@ export async function runCourseChecks({
   await page().waitForSelector('canvas[aria-label="Original PDF page 37"]');
   // Check the navigation while the lower part of the PDF page is visible.
   await page().$eval('.book-courses canvas', (canvas) => canvas.scrollIntoView({ block: 'end' }));
-  const back = await page().waitForSelector('.bc-navigation button:last-child');
+  const back = await page().waitForFunction(() =>
+    [...document.querySelectorAll('.bc-navigation button')].find((b) => b.textContent === 'Back to chapters'),
+  );
   assert.ok(await back.isIntersectingViewport({ threshold: 1 }));
   await back.click();
   await see(chapter, '.bc-card');
@@ -153,7 +175,45 @@ export async function runCourseChecks({
   await page().$eval('[data-page="58"]', (el) => el.scrollIntoView({ block: 'start' }));
   await page().waitForSelector('canvas[aria-label="Original PDF page 58"]');
   assert.equal(await page().$$eval('.bc-page', (pages) => pages.at(-1).dataset.page), '69');
+  await click('I’ve read this section · Start Teaching');
+  await see(
+    'What is the simple return when the price rises from 100 to 110?',
+    '[data-testid="question-dock"]',
+  );
+  const nativeId = new URL(page().url()).pathname.split('/').at(-1);
+  await click('Ten percent');
+  await page().type(
+    '[data-testid="thinking-field"] textarea',
+    'Divide the price change by the initial price, so 10/100 gives ten percent.',
+  );
+  await click('Submit answer');
+  await eventually(async () =>
+    assert.ok(
+      (await api('/api/chats/' + nativeId)).messages.some(
+        (m) => m.role === 'toolResult' && m.details?.thinking?.includes('initial price'),
+      ),
+    ),
+  );
+  await click('Courses');
+  await see('1 of 14 chapter subpoints demonstrated', '.bc-status');
+  await page().$eval('.bc-lessons summary', (el) => el.click());
+  await see('Definitions · Demonstrated', '.bc-lessons details[open]');
+  await click('Start Teaching · Excess Returns');
+  await page().waitForFunction(
+    (id) => location.pathname.startsWith('/chat/') && !location.pathname.endsWith(id),
+    {},
+    nativeId,
+  );
+  const nextId = new URL(page().url()).pathname.split('/').at(-1);
+  await eventually(async () =>
+    assert.match((await api('/api/chats/' + nextId)).messages[0]?.content || '', /Teach me “Excess Returns”/),
+  );
+  await click('Courses');
+  await see('Available after all 4 lessons are done.', '.bc-exam');
   await click('Back to chapters');
+  await observe(
+    'Chapter 2 Definitions accepted a submitted native diagnostic answer and saved its evidence. The next Teaching opened separately for Excess Returns and the exam remained pending.',
+  );
   await observe(
     'Chapter 2 showed all four lessons and the first assignment scrolled from the chapter opening on PDF p. 57 through §2.1.',
   );

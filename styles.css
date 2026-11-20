@@ -142,3 +142,10 @@
   margin: 0;
   padding: 0.3rem 0;
 }
+.book-courses .bc-subpoint {
+  padding: .35rem .75rem;
+}
+.book-courses .bc-subpoint small {
+  display: block;
+  color: var(--muted-foreground, inherit);
+}
