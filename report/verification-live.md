@@ -48,3 +48,9 @@ On 20 November 2026 the stock desktop test imported the same EQI PDF in a dispos
 On 20 November 2026 the stock desktop test scrolled the original EQI pages in a continuous reader. Chapter 2 displayed four lesson entries before any teaching, with §2.1 current and §2.2–2.4 upcoming. The first assignment spanned printed pp. 29–41 (PDF pp. 57–69), starting with the opening questions. The tutor-input test located both those questions and the introduction that continues above the §2.1 heading on p. 58. The first assignment also reopened offline.
 
 Finishing Chapter 1’s first lesson marked §1.1 Done, kept its discussion available in its lesson entry and opened §1.2 at the reading gate. The backend restart check preserved the active section and prior transcript boundary. After the test completed the chapter exam, the chapter list showed Chapter done. These progression checks used a disposable profile and scripted answers.
+
+## Native Teaching in Courses 0.1.4
+
+On 20 November 2026, a disposable LearnHarness 0.6.1 desktop profile opened EQI §1.1 in a normal Teaching from its reading acknowledgement. The stock question dock displayed a multiple-choice probe and the Dictate control. Courses returned to Chapter 1, and Resume Teaching restored the same session and outstanding question.
+
+For EQI Chapter 2, the reader opened at the chapter introduction on PDF p. 57. In the Definitions Teaching, the test learner selected a return and entered the calculation behind it. The local scripted provider credited that saved answer. Courses reported one of 14 subpoints demonstrated, offered Excess Returns in a separate Teaching, and kept the exam pending. The exam regression subsequently opened the book’s Exercise 2.1 and its source on PDF p. 99. These checks exercised the stock UI, tools, transcript and progress storage with a scripted model. They did not record microphone audio or measure live-model grading quality.

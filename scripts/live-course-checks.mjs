@@ -183,7 +183,7 @@ export async function runCourseChecks({
   const nativeId = new URL(page().url()).pathname.split('/').at(-1);
   await click('Ten percent');
   await page().type(
-    '[data-testid="thinking-field"] textarea',
+    '[data-testid="thinking-field"] [role="textbox"]',
     'Divide the price change by the initial price, so 10/100 gives ten percent.',
   );
   await click('Submit answer');

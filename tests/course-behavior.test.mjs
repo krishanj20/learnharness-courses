@@ -619,9 +619,9 @@ test('native Teaching scopes the first diagnostic to the book and credits only d
   const ch = chapter(sections);
   ch.sections[0].subsections = [
     { title: 'Dispersion', start: 1 },
-    { title: 'Ratios', start: 1 },
+    { title: 'Ratios and variance', start: 1 },
   ];
-  ch.sections[0].parts[0].text = 'Dispersion\n' + volatility + '\nRatios\nScale by risk.';
+  ch.sections[0].parts[0].text = 'Dispersion\n' + volatility + '\nRatios and vari-\nance\nScale by risk.';
   const sessions = [];
   const h = host(t, [ch], sessions);
   h.reply((i) => plan(i));
@@ -651,7 +651,7 @@ test('native Teaching scopes the first diagnostic to the book and credits only d
   const source = JSON.parse((await read.execute()).content[0].text);
   assert.deepEqual(
     source.chapterMap[0].points.map((p) => p.title),
-    ['Dispersion', 'Ratios'],
+    ['Dispersion', 'Ratios and variance'],
   );
   assert.match(source.assigned.pages[0].text, /Volatility/);
   assert.doesNotMatch(source.assigned.pages[0].text, /Scale by risk|Ratios/);
@@ -691,6 +691,7 @@ test('native Teaching scopes the first diagnostic to the book and credits only d
   );
   h.reply({ demonstrated: [award('2.1', 'transferred')] });
   await h.call('teaching-check', { sessionId: 'native' });
+  assert.match(await h.call('teaching-check', { sessionId: 'second' }), /3 of 3.*chapter exam/);
   assert.equal((await state()).phase, 'exam-ready');
   assert.equal((await h.call('course')).chapters[0].lessonsDone, 2);
 });

@@ -9,20 +9,26 @@ function material(book, chapter, section, point) {
   const target = topics[point],
     next = topics[point + 1];
   const lines = part.parts.flatMap((p) => p.text.split('\n').map((text) => ({ page: p.page, text })));
-  const boundary = (t) => {
-    const match = lines.findIndex(
-      (l) => l.page === t.start && normalise(l.text).replace(/^(?:\d+ )+/, '') === normalise(t.title),
-    );
-    return match >= 0 ? match : lines.findIndex((l) => l.page >= t.start);
-  };
-  const start = point === 0 ? 0 : Math.max(0, boundary(target));
-  let end = next ? boundary(next) : lines.length;
-  // Unmatched headings can share a physical page. Keep the boundary page available.
-  if (
-    next &&
-    (end <= start || normalise(lines[end]?.text ?? '').replace(/^(?:\d+ )+/, '') !== normalise(next.title))
-  )
-    end = lines.findIndex((l) => l.page > next.start);
+  // Compare across physical lines because PDF headings can wrap mid-word.
+  const compact = (text) => normalise(text).replaceAll(' ', '');
+  function boundary(topic) {
+    const wanted = compact(topic.title);
+    const first = lines.findIndex((line) => line.page >= topic.start);
+    for (let i = first; i >= 0 && i < lines.length && lines[i].page === topic.start; i++) {
+      let heading = '';
+      for (let j = i; j < lines.length && lines[j].page === topic.start; j++) {
+        const raw = lines[j].text;
+        heading += compact(j === i ? raw.replace(/^\s*\d+(?:\.\d+)+\.?\s+/, '') : raw);
+        if (heading === wanted) return { index: i, exact: true };
+        if (!wanted.startsWith(heading)) break;
+      }
+    }
+    return { index: first, exact: false };
+  }
+  const start = point === 0 ? 0 : Math.max(0, boundary(target).index);
+  const stop = next && boundary(next);
+  let end = stop ? stop.index : lines.length;
+  if (stop && (!stop.exact || end <= start)) end = lines.findIndex((l) => l.page > next.start);
   const selected = lines.slice(start, end < 0 ? undefined : end);
   const byPage = new Map();
   for (const line of selected) {
@@ -132,14 +138,28 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
     links.set(s.id, { id: a.id, chapter: a.chapter, key: a.key });
   });
 
+  function feedback(ch, key) {
+    const topics = ch.sections.flatMap(points);
+    const demonstrated = topics.filter((p) => ch.teaching?.[p.key]?.done).length;
+    const next =
+      ch.chat.phase === 'exam-ready'
+        ? 'Open Courses for the chapter exam.'
+        : ch.chat.phase === 'complete'
+          ? 'Chapter complete.'
+          : ch.teaching?.[key]?.done
+            ? 'Open Courses for the next subpoint.'
+            : 'Continue teaching this subpoint.';
+    return demonstrated + ' of ' + topics.length + ' chapter subpoints demonstrated. ' + next;
+  }
   async function assess(sessionId, signal) {
     const a = links.get(sessionId);
     if (!a) throw Error('This session is not linked to a course.');
     const { ch, entry } = coursePoint(a);
     const answers = nativeAnswers(ctx.learning.getSession(sessionId)?.messages ?? []).filter((v) => v.id);
-    if (!answers.length) return 'No answered diagnostic or teaching question yet.';
+    if (!answers.length)
+      return entry.done ? feedback(ch, a.key) : 'No answered diagnostic or teaching question yet.';
     const version = createHash('sha256').update(JSON.stringify(answers)).digest('hex');
-    if (entry.checked === version) return entry.feedback;
+    if (entry.checked === version) return feedback(ch, a.key);
     const targets = ch.sections.flatMap((s, i) =>
       points(s, i).map((p) => ({
         ...p,
@@ -154,7 +174,8 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
     signal?.throwIfAborted();
     const fresh = coursePoint(a);
     if (fresh.entry?.sessionId !== sessionId) throw Error('This teaching link changed. Reopen the course.');
-    if (fresh.entry.checked === version) return fresh.entry.feedback;
+    if (fresh.entry.checked === version) return feedback(fresh.ch, a.key);
+    if (fresh.entry.checked !== entry.checked) throw Error('New answers arrived. Check progress again.');
     const chapter = fresh.ch,
       chat = chapter.chat;
     const valid = new Set(
@@ -201,18 +222,8 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
       chat.phase = 'reading';
     }
     fresh.entry.checked = version;
-    const total = targets.length;
-    const known = targets.filter((t) => chapter.teaching[t.key]?.done).length;
-    fresh.entry.feedback =
-      known +
-      ' of ' +
-      total +
-      ' chapter subpoints demonstrated. ' +
-      (fresh.entry.done
-        ? 'Subpoint demonstrated. Open Courses for the next reading or the chapter exam.'
-        : 'Continue teaching this subpoint. The saved answers do not yet demonstrate it in full.');
     commit(a, fresh.c, chapter);
-    return fresh.entry.feedback;
+    return feedback(fresh.ch, a.key);
   }
   ctx.handle('teaching-check', ({ sessionId }) => assess(sessionId));
   ctx.registerTools?.({
