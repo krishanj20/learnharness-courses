@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "id": "edca69e712e9d395629c1fc8b6ed0b6c007fd565547c5851b5ab53d3415f445f",
+  "sessionId": "synthetic_probability",
+  "title": "Probability for offline study",
+  "topics": [
+    {
+      "id": "fractions",
+      "title": "Fractions",
+      "prerequisites": []
+    },
+    {
+      "id": "joint",
+      "title": "Joint events",
+      "prerequisites": []
+    },
+    {
+      "id": "conditional",
+      "title": "Conditional probability",
+      "prerequisites": []
+    }
+  ],
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "lessons": [
+    {
+      "explanation": "Count the favourable outcomes and divide by the total.",
+      "example": "Three out of twelve is one quarter.",
+      "checks": [
+        {
+          "question": "What fraction is one out of two?",
+          "correctAnswer": "a",
+          "options": [
+            {
+              "value": "a",
+              "label": "1/2",
+              "feedback": "Correct."
+            },
+            {
+              "value": "b",
+              "label": "2",
+              "feedback": "Divide the number of successes by the number considered."
+            }
+          ],
+          "alternateExample": "Two of eight equally likely outcomes make one quarter.",
+          "followUp": {
+            "question": "What fraction is two out of eight?",
+            "correctAnswer": "a",
+            "options": [
+              {
+                "value": "a",
+                "label": "1/4",
+                "feedback": "Correct."
+              },
+              {
+                "value": "b",
+                "label": "4",
+                "feedback": "Divide the number of successes by the number considered."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "explanation": "Count the favourable outcomes and divide by the total.",
+      "example": "Three out of twelve is one quarter.",
+      "checks": [
+        {
+          "question": "One of four equally likely outcomes satisfies both events. What is their joint probability?",
+          "correctAnswer": "a",
+          "options": [
+            {
+              "value": "a",
+              "label": "1/4",
+              "feedback": "Correct."
+            },
+            {
+              "value": "b",
+              "label": "4",
+              "feedback": "Divide the number of successes by the number considered."
+            }
+          ],
+          "alternateExample": "Two of eight equally likely outcomes make one quarter.",
+          "followUp": {
+            "question": "What fraction is two out of eight?",
+            "correctAnswer": "a",
+            "options": [
+              {
+                "value": "a",
+                "label": "1/4",
+                "feedback": "Correct."
+              },
+              {
+                "value": "b",
+                "label": "4",
+                "feedback": "Divide the number of successes by the number considered."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "explanation": "Count the favourable outcomes and divide by the total.",
+      "example": "Three out of twelve is one quarter.",
+      "checks": [
+        {
+          "question": "Three of six people in a group qualify. What is the probability for a group member?",
+          "correctAnswer": "a",
+          "options": [
+            {
+              "value": "a",
+              "label": "1/2",
+              "feedback": "Correct."
+            },
+            {
+              "value": "b",
+              "label": "2",
+              "feedback": "Divide the number of successes by the number considered."
+            }
+          ],
+          "alternateExample": "Two of eight equally likely outcomes make one quarter.",
+          "followUp": {
+            "question": "What fraction is two out of eight?",
+            "correctAnswer": "a",
+            "options": [
+              {
+                "value": "a",
+                "label": "1/4",
+                "feedback": "Correct."
+              },
+              {
+                "value": "b",
+                "label": "4",
+                "feedback": "Divide the number of successes by the number considered."
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "completed": 3,
+  "answers": {
+    "0:0:main": "b",
+    "1:0:main": "a",
+    "2:0:main": "a"
+  }
+}
