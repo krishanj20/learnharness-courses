@@ -59,3 +59,12 @@ Courses SHALL assign the upcoming subheading with its physical and printed page 
 - **WHEN** a learner selects a correct option without reasoning, or repeats a tutor-supplied solution
 - **THEN** the tutor asks for a fresh unaided application before a skip
 - **AND** an independently reasoned first response can earn immediate credit
+
+### Requirement: Optional offline study for individual subpoints
+A learner SHALL be able to prepare a selected course subpoint while connected, including one with an existing Teaching. Courses SHALL save its book-grounded explanation, example, checks and feedback locally.
+
+#### Scenario: Work through a selected lesson after disconnecting
+- **WHEN** the learner opens a prepared lesson after a restart without model access
+- **THEN** its reading, checks, answer feedback and completion work locally and progress survives restart
+- **AND** the original Teaching remains available and other lessons keep their chosen mode
+- **AND** finishing the checks counts towards chapter progression independently of any demonstration of mastery

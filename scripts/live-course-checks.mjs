@@ -89,6 +89,44 @@ export async function runCourseChecks({
   await see('Which feature lets a security change hands?');
   assert.ok(fixture.requests.some((r) => r.native && r.sourceRead));
   assert.ok(await page().$('[aria-label*="dictat" i], [title*="dictat" i]'));
+  if (process.argv.includes('--offline-lesson')) {
+    await click('Offline course lesson');
+    await see('Ready offline', '.book-courses');
+    assert.ok(
+      fixture.requests.some((r) => r.assigned?.title === 'The Securities' && r.assigned.pages.length),
+    );
+    fixture.setConnected(false);
+    await stop();
+    await launch(true);
+    await click('Courses');
+    await click(title);
+    await click(chapter);
+    await click('Open offline lesson');
+    await click('Open assigned pages');
+    await page().waitForSelector('canvas[aria-label="Original PDF page 33"]');
+    await click('Back to offline lesson');
+    await click('I’ve read the pages · Start offline lesson');
+    await click('Bespoke terms');
+    await see('Bespoke terms require negotiation.', '.book-courses');
+    await stop();
+    await launch(true);
+    await click('Courses');
+    await click(title);
+    await click(chapter);
+    await click('Open offline lesson');
+    await see('Your answer · Bespoke terms', '.book-courses');
+    await click('Standard terms');
+    await click('Finish offline lesson');
+    await see('1 of 5 lessons done', '.book-courses');
+    const result = await call('course', { id });
+    assert.equal(result.chapters[0].teaching['1.1'].sessionId, sessionId);
+    assert.deepEqual(Object.keys(result.chapters[0].offlineLessons), ['1.1']);
+    assert.ok(!result.chapters[0].teaching['1.1'].done);
+    await observe(
+      'Converted The Securities from its live Teaching, reopened its PDF and completed two checks across two network-blocked launches. The original session survived and only the selected lesson was saved.',
+    );
+    return;
+  }
   await click('Courses');
   await see(chapter, '.book-courses h1');
   await see('Resume Teaching', '.bc-reading');

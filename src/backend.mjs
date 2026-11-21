@@ -1,3 +1,4 @@
+import { registerOfflineLessons } from './offline-lesson.mjs';
 import {
   advanceExam,
   bookQuestions,
@@ -6,7 +7,7 @@ import {
   sourceExercise,
 } from './exam-threads.mjs';
 import { practiceOffer, practiceSummary, registerReview } from './review.mjs';
-import { registerTeaching } from './native-teaching.mjs';
+import { advanceLessons, registerTeaching } from './native-teaching.mjs';
 import fs from 'node:fs';
 import { pointReadings } from './passages.mjs';
 import { join } from 'node:path';
@@ -91,7 +92,13 @@ export function activate(ctx) {
       title: c.title,
       warnings: c.warnings,
       practiceOffer: practiceOffer(c.chapters),
-      chapters: c.chapters.map(({ chat, reviews, ...ch }, i) => ({
+      chapters: c.chapters.map(({ chat, reviews, offlineLessons, ...ch }, i) => ({
+        offlineLessons: Object.fromEntries(
+          Object.entries(offlineLessons ?? {}).map(([key, l]) => [
+            key,
+            { read: l.read, finished: l.finished },
+          ]),
+        ),
         ...ch,
         practice: practiceSummary({ ...ch, chat, reviews }),
         sections: ch.sections.map((s, j) => {
@@ -170,7 +177,7 @@ export function activate(ctx) {
             (s, j) =>
               s.title === updated.sections[j].title &&
               s.number === updated.sections[j].number &&
-              (!ch.teaching ||
+              ((!ch.teaching && !ch.offlineLessons) ||
                 JSON.stringify((s.subsections ?? []).map((p) => p.title)) ===
                   JSON.stringify((updated.sections[j].subsections ?? []).map((p) => p.title))),
           )
@@ -309,6 +316,7 @@ export function activate(ctx) {
     }
   }
   registerReview(ctx, { edit, book, imageList });
+  registerOfflineLessons(ctx, { edit, book, state, imageList });
   ctx.handle('prepare', (a) =>
     edit(a, async (ch) => {
       if (!needsPlan(ch)) return;
@@ -403,6 +411,7 @@ export function activate(ctx) {
         c.phase = 'exam-ready';
       }
       c.ready = false;
+      advanceLessons(ch);
     }),
   );
   ctx.handle('turn', (a) =>
@@ -521,6 +530,7 @@ export function activate(ctx) {
         c.phase = 'discussion';
       }
       delete conversation.pending;
+      if (ch.offlineLessons) advanceLessons(ch);
     }),
   );
 

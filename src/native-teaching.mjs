@@ -5,7 +5,7 @@ import { nativeAnswers, normalise } from './learning.mjs';
 import { ask, chapterOpening } from './model.mjs';
 import { points } from './passages.mjs';
 
-function material(book, chapter, section, point) {
+export function material(book, chapter, section, point) {
   const part = chapter.sections[section],
     topics = points(part, section);
   const target = topics[point],
@@ -69,6 +69,32 @@ function openingExcerpt(pages, budget) {
 const grade =
   'Assess the saved native Teaching answers against the listed course subpoints. Return {"demonstrated":[{"point":"point key","answerIds":["actual learner answer IDs"],"reason":"what their reasoning shows"}]}. Credit only the exact subpoints whose central reasoning the learner demonstrated independently. Use the parent objectives as context. Do not infer a whole section from one subpoint, a topic mention, self-report, the supplied reading, a guess or the tutor’s solution. Compare each learner-authored explanation or application with the visible tutorContext that preceded it and any feedback on earlier attempts. Exclude answers led by a hint, solution, scaffold or replay of the tutor’s reasoning, even when correctly paraphrased. A selected option alone or confidence gives no independent evidence. After a hint or selection alone, look for a fresh, unaided application to a different case. Credit a sound independent first explanation immediately. Weigh mistakes and later evidence together. Partial or uncertain evidence leaves a subpoint to teach. An empty list is valid.';
 
+export function advanceLessons(chapter) {
+  const chat = chapter.chat;
+  while (
+    !chat.pending &&
+    ['reading', 'discussion'].includes(chat.phase) &&
+    points(chapter.sections[chat.section], chat.section).every(
+      (p) => chapter.teaching?.[p.key]?.done || chapter.offlineLessons?.[p.key]?.finished,
+    )
+  ) {
+    if (chat.phase === 'discussion')
+      (chat.lessonRanges ??= {})[chat.section] = {
+        start: chat.sectionTurnStart ?? 0,
+        end: chat.messages.length,
+      };
+    chat.ready = false;
+    if (chat.section + 1 === chapter.sections.length) {
+      chat.phase = 'exam-ready';
+      chat.examTurnStart = chat.messages.length;
+      break;
+    }
+    chat.section++;
+    chat.sectionTurnStart = chat.messages.length;
+    chat.phase = 'reading';
+  }
+}
+
 export function registerTeaching(ctx, { state, book, save, ids, busy }) {
   const links = new Map();
   for (const id of ids()) {
@@ -99,7 +125,7 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
     const { c, ch, section, point, topic } = coursePoint(a);
     if (!ch.objectives || ch.chat.pending)
       throw Error('Prepare the lesson and finish any pending turn first.');
-    if (section > ch.chat.section && !ch.teaching?.[a.key]?.done)
+    if (section > ch.chat.section && !ch.teaching?.[a.key]?.done && !ch.offlineLessons?.[a.key]?.finished)
       throw Error('Read the assigned section first.');
     ch.diagnosticTeachingPoint ??= a.key;
     const entry = ((ch.teaching ??= {})[a.key] ??= {});
@@ -144,7 +170,7 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
         .join('\n\n');
     return {
       sessionId: entry.sessionId,
-      started: !!session?.messages?.some(m => m.role === 'user' || m.role === 'assistant'),
+      started: !!session?.messages?.some((m) => m.role === 'user' || m.role === 'assistant'),
       rename: session?.title === provisional,
       provisional,
       title: topic.title === ch.title ? ch.title : topic.title + ' · ' + ch.title,
@@ -205,8 +231,7 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
     if (fresh.entry?.sessionId !== sessionId) throw Error('This teaching link changed. Reopen the course.');
     if (fresh.entry.checked === version) return feedback(fresh.ch, a.key);
     if (fresh.entry.checked !== entry.checked) throw Error('New answers arrived. Check progress again.');
-    const chapter = fresh.ch,
-      chat = chapter.chat;
+    const chapter = fresh.ch;
     const valid = new Set(
       answers
         .filter(
@@ -231,26 +256,7 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
       const point = (chapter.teaching[d.point] ??= {});
       point.done ??= { sessionId, answerIds: d.answerIds, reason: d.reason };
     }
-    while (
-      !chat.pending &&
-      ['reading', 'discussion'].includes(chat.phase) &&
-      points(chapter.sections[chat.section], chat.section).every((p) => chapter.teaching[p.key]?.done)
-    ) {
-      if (chat.phase === 'discussion')
-        (chat.lessonRanges ??= {})[chat.section] = {
-          start: chat.sectionTurnStart ?? 0,
-          end: chat.messages.length,
-        };
-      chat.ready = false;
-      if (chat.section + 1 === chapter.sections.length) {
-        chat.phase = 'exam-ready';
-        chat.examTurnStart = chat.messages.length;
-        break;
-      }
-      chat.section++;
-      chat.sectionTurnStart = chat.messages.length;
-      chat.phase = 'reading';
-    }
+    advanceLessons(chapter);
     fresh.entry.checked = version;
     commit(a, fresh.c, chapter);
     return feedback(fresh.ch, a.key);

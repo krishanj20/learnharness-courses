@@ -5,6 +5,22 @@ import { once } from 'node:events';
 
 const id = 'book-course-smoke';
 function logicalReply(instruction, input) {
+  if (input.assigned && instruction.includes('offline book lesson')) {
+    return {
+      explanation: 'A security is a standardised tradable contract.',
+      example: 'Compare an exchange-traded contract with a bespoke agreement.',
+      checks: ['Which contract is easier to transfer?', 'What makes the new contract transferable?'].map(
+        (question) => ({
+          question,
+          correct: 1,
+          choices: [
+            { label: 'Bespoke terms', feedback: 'Bespoke terms require negotiation.' },
+            { label: 'Standard terms', feedback: 'Common terms facilitate transfer.' },
+          ],
+        }),
+      ),
+    };
+  }
   if (Array.isArray(input.targets)) {
     const answer = input.answers.find((a) =>
       a.answer.includes('Divide the price change by the initial price'),

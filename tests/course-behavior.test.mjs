@@ -1044,3 +1044,57 @@ test('a newly blocked unprepared exercise becomes a tutor-written replacement af
   const opened = await h.call('exam', { questionId: state.exam.questions[1].id });
   assert.equal(opened.exam.current.origin, 'Tutor-written');
 });
+
+test('optional offline lessons preserve live work, survive disconnection and advance without mastery credit', async (t) => {
+  const h = host(t, [chapter(sections)]);
+  h.reply(plan);
+  await h.call('prepare');
+  const make = (key) => h.call('offline-prepare', { key });
+  h.reply({ explanation: 'Incomplete' });
+  await assert.rejects(make('2.1'), /incomplete/);
+  assert.deepEqual((await h.call('course')).chapters[0].offlineLessons, {});
+  const lesson = {
+    explanation: 'Compare the source quantities.',
+    example: 'Double the input.',
+    checks: ['Calculate the change.', 'Explain another case.'].map((question) => ({
+      question,
+      correct: 1,
+      choices: [
+        { label: 'Constant', feedback: 'The inputs changed.' },
+        { label: 'Doubles', feedback: 'The ratio doubled.' },
+      ],
+    })),
+  };
+  h.reply((input) => {
+    assert.equal(input.assigned.title, sections[1][0]);
+    return lesson;
+  });
+  await make('2.1'); // choose an upcoming lesson before a trip
+  h.reply(() => {
+    throw Error('offline');
+  });
+  await make('2.1');
+  const study = (key) => h.call('offline-study', { key });
+  await assert.rejects(study('1.1'), /Prepare/);
+  await assert.rejects(study('2.1'), /reading/);
+  async function finish(key) {
+    await h.call('offline-read', { key });
+    assert.equal((await study(key)).checks[0].correct, undefined);
+    await h.call('offline-answer', { key, check: 0, choice: 0 });
+    h.restart();
+    assert.equal((await study(key)).checks[0].feedback, 'The inputs changed.');
+    await assert.rejects(h.call('offline-answer', { key, check: 0, choice: 1 }), /unanswered/);
+    await assert.rejects(h.call('offline-finish', { key }), /both/);
+    await h.call('offline-answer', { key, check: 1, choice: 1 });
+    await h.call('offline-finish', { key });
+  }
+  await finish('2.1');
+  assert.equal((await h.call('chat')).section, 0);
+  h.reply(lesson);
+  await make('1.1');
+  await finish('1.1');
+  assert.equal((await h.call('chat')).phase, 'exam-ready');
+  const ch = (await h.call('course')).chapters[0];
+  assert.equal(ch.teaching?.['1.1']?.done, undefined);
+  assert.deepEqual(ch.offlineLessons['2.1'], { read: true, finished: true });
+});
