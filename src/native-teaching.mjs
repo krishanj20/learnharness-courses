@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { nativeAnswers, normalise } from './learning.mjs';
 import { ask, chapterOpening } from './model.mjs';
-import { points } from './passages.mjs';
+import { points, pointFinished } from './passages.mjs';
 
 export function material(book, chapter, section, point) {
   const part = chapter.sections[section],
@@ -74,8 +74,8 @@ export function advanceLessons(chapter) {
   while (
     !chat.pending &&
     ['reading', 'discussion'].includes(chat.phase) &&
-    points(chapter.sections[chat.section], chat.section).every(
-      (p) => chapter.teaching?.[p.key]?.done || chapter.offlineLessons?.[p.key]?.finished,
+    points(chapter.sections[chat.section], chat.section).every((p) =>
+      pointFinished(chapter.teaching?.[p.key], chapter.offlineLessons?.[p.key]),
     )
   ) {
     if (chat.phase === 'discussion')
@@ -164,7 +164,7 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
       (first
         ? 'Start with a short adaptive chapter diagnostic. Ask one question at a time about the reading and probe related chapter outcomes when my answers suggest I know more. '
         : 'Start with the selected subpoint and keep questions focused on it. Earlier sections are optional. ') +
-      'Use your normal interactive probe, quiz and explain tools. Match the depth to my answers. Call course_check_progress after the diagnostic and when I demonstrate the subpoint. If I already understand it, direct me back to Courses for the next gap or the chapter exam.' +
+      'Use your normal interactive probe, quiz and explain tools. Match the depth to my answers. Call course_check_progress after the diagnostic and when I demonstrate the subpoint. When we finish the agreed lesson, call course_finish_lesson before your closing summary, including when I finished with guidance or multiple-choice answers. If I already understand it, direct me back to Courses for the next gap or the chapter exam.' +
       '\n\nAssigned book reading\n' +
       [openingExcerpt(assigned.opening, 3200), openingExcerpt(assigned.pages, 12000)]
         .filter(Boolean)
@@ -202,18 +202,33 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
         ? 'Open Courses for the chapter exam.'
         : ch.chat.phase === 'complete'
           ? 'Chapter complete.'
-          : ch.teaching?.[key]?.done
+          : pointFinished(ch.teaching?.[key], ch.offlineLessons?.[key])
             ? 'Open Courses for the next subpoint.'
             : 'Try a fresh problem on the same skill without hints and explain your reasoning.';
     return demonstrated + ' of ' + topics.length + ' chapter subpoints demonstrated. ' + next;
   }
+  function finish(sessionId) {
+    const address = links.get(sessionId);
+    if (!address) throw Error('Open a Teaching linked to a course lesson.');
+    const { c, ch, entry, topic } = coursePoint(address);
+    if (entry?.sessionId !== sessionId) throw Error('The lesson link changed. Reopen it from Courses.');
+    if (!entry.completed) {
+      entry.completed = true;
+      advanceLessons(ch);
+      commit(address, c, ch);
+    }
+    return topic.title + ' · Completed. ' + feedback(ch, address.key);
+  }
+  ctx.handle('teaching-finish', ({ sessionId }) => finish(sessionId));
   async function assess(sessionId, signal) {
     const a = links.get(sessionId);
     if (!a) throw Error('This session is not linked to a course.');
     const { ch, entry } = coursePoint(a);
     const answers = nativeAnswers(ctx.learning.getSession(sessionId)?.messages ?? []).filter((v) => v.id);
     if (!answers.length)
-      return entry.done ? feedback(ch, a.key) : 'No answered diagnostic or teaching question yet.';
+      return entry.done || entry.completed
+        ? feedback(ch, a.key)
+        : 'No answered diagnostic or teaching question yet.';
     const version = createHash('sha256').update(JSON.stringify(answers)).digest('hex');
     if (entry.checked === version) return feedback(ch, a.key);
     const targets = ch.sections.flatMap((s, i) =>
@@ -306,6 +321,14 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
             'Assess the learner’s saved answers after diagnostic checks or successful teaching. Records independently demonstrated subpoints and preserves untested ones for study.',
           parameters,
           execute: async (_id, _input, signal) => result(await assess(chatId, signal)),
+        },
+        {
+          name: 'course_finish_lesson',
+          label: 'Finish course lesson',
+          description:
+            'Record completion of this linked subpoint when the agreed teaching or review has finished. Call before the closing summary, even if independent mastery is unverified. Do not call for an intermediate quiz, diagnostic handoff, or unfinished lesson. Mastery is assessed separately by course_check_progress.',
+          parameters,
+          execute: async () => result(finish(chatId)),
         },
         {
           name: 'course_page',

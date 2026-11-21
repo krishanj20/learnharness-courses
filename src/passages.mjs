@@ -43,3 +43,8 @@ export function pointReadings(section, index, firstPage, pages) {
     };
   });
 }
+
+// Finishing a taught lesson and demonstrating a skill are separate records.
+export function pointFinished(teaching, offline) {
+  return Boolean(teaching?.completed || teaching?.done || offline?.finished);
+}

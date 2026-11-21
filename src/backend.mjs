@@ -9,7 +9,7 @@ import {
 import { practiceOffer, practiceSummary, registerReview } from './review.mjs';
 import { advanceLessons, registerTeaching } from './native-teaching.mjs';
 import fs from 'node:fs';
-import { pointReadings } from './passages.mjs';
+import { pointFinished, pointReadings, points } from './passages.mjs';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import {
@@ -86,6 +86,11 @@ export function activate(ctx) {
         !ch.chat.results.length)
     );
   }
+  function completedPoints(ch, section, readings) {
+    if (section < ch.chat.section || !['reading', 'discussion'].includes(ch.chat.phase))
+      return readings.length;
+    return readings.filter((p) => pointFinished(ch.teaching?.[p.key], ch.offlineLessons?.[p.key])).length;
+  }
   function publicCourse(c, source = book(c.id)) {
     return {
       id: c.id,
@@ -93,21 +98,18 @@ export function activate(ctx) {
       warnings: c.warnings,
       practiceOffer: practiceOffer(c.chapters),
       chapters: c.chapters.map(({ chat, reviews, offlineLessons, ...ch }, i) => {
-        const studying = ['reading', 'discussion'].includes(chat.phase);
         const sections = ch.sections.map((s, j) => {
           const start = j === 0 ? ch.start : s.start;
           const readings = pointReadings(s, j, start, source.pages);
-          const done =
-            !studying ||
-            j < chat.section ||
-            readings.every((p) => ch.teaching?.[p.key]?.done || offlineLessons?.[p.key]?.finished);
+          const count = completedPoints(c.chapters[i], j, readings);
           return {
             ...s,
             start,
             firstLabel: source.pages[start - 1].label,
             includesIntroduction: j === 0 && chapterOpening(source, source.chapters[i]).length > 0,
             readings,
-            done,
+            completedPoints: count,
+            done: count === readings.length,
           };
         });
         return {
@@ -144,6 +146,29 @@ export function activate(ctx) {
           id,
           title: c.title,
           count: c.chapters.length,
+          lastChapter: c.lastChapter,
+          progress: c.chapters.map((ch) => {
+            let completed = 0,
+              total = 0;
+            ch.sections.forEach((s, j) => {
+              const readings = points(s, j);
+              total += readings.length;
+              completed += completedPoints(ch, j, readings);
+            });
+            return {
+              title: ch.title,
+              completed,
+              total,
+              done: ch.chat.phase === 'complete',
+              started: Boolean(
+                completed ||
+                ch.chat.messages.length ||
+                ch.chat.selectedPoint ||
+                Object.values(ch.teaching ?? {}).some((entry) => entry.sessionId) ||
+                Object.values(ch.offlineLessons ?? {}).some((lesson) => lesson.read),
+              ),
+            };
+          }),
           practiceOffer: practiceOffer(c.chapters),
           prepared: c.chapters.filter((c) => c.objectives).length,
         };
@@ -205,6 +230,7 @@ export function activate(ctx) {
     const c = {
       id,
       title: source.title,
+      lastChapter: existing?.lastChapter,
       warnings: source.warnings,
       sourceFile,
       chapters: source.chapters.map((ch, i) => {
@@ -263,8 +289,13 @@ export function activate(ctx) {
       fs.closeSync(fd);
     }
   });
-  ctx.handle('chat', ({ id, chapter }) => {
-    const ch = at(state(id).chapters, chapter);
+  ctx.handle('chat', ({ id, chapter, remember }) => {
+    const c = state(id);
+    const ch = at(c.chapters, chapter);
+    if (remember && c.lastChapter !== chapter) {
+      c.lastChapter = chapter;
+      save(id, c);
+    }
     return publicChat(ch.chat, ch.exercisePages);
   });
 

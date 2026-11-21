@@ -458,6 +458,7 @@ test('book exam preserves provenance, resumes scaffold position and credits a fr
     text: 'I used a direct argument with two equally likely outcomes.',
   });
   assert.equal(result.phase, 'complete');
+  assert.equal((await h.call('list'))[0].progress[0].done, true);
   assert.deepEqual(
     result.results[1].fullyTested,
     [],
@@ -1137,4 +1138,52 @@ test('study the later section first without testing or crediting the earlier sec
   assert.deepEqual((await h.call('chat')).readSections, { 1: true });
   assert.equal((await h.call('teaching-start', { key: '2.1' })).sessionId, 'later');
   assert.match((await h.call('teaching-start', { key: '1.1' })).opening, /Volatility/);
+});
+
+test('finish a linked Teaching after correct selections without granting mastery or completing its siblings', async (t) => {
+  const source = chapter(solo);
+  source.sections[0].subsections = [
+    { title: 'Measuring rainfall', start: 1 },
+    { title: 'Measuring streamflow', start: 1 },
+  ];
+  const sessions = [],
+    h = host(t, [source], sessions);
+  h.reply((i) => plan(i));
+  await h.call('prepare');
+  async function link(key, id) {
+    const lesson = await h.call('teaching-start', { key });
+    sessions.push({
+      id,
+      title: lesson.provisional,
+      kind: 'teach',
+      messages: [quiz('correct', 'Which instrument collects precipitation?', 'Rain gauge')],
+    });
+    await h.call('teaching-bind', { key, sessionId: id });
+  }
+  await link('1.1', 'rainfall');
+  h.reply({ demonstrated: [] });
+  await h.call('teaching-check', { sessionId: 'rainfall' });
+  let ch = (await h.call('course')).chapters[0];
+  assert.equal(ch.sections[0].completedPoints, 0);
+  await h
+    .tools('rainfall')
+    .find((t) => t.name === 'course_finish_lesson')
+    .execute();
+  await h.call('chat', { remember: true });
+  h.restart();
+  await h.call('teaching-finish', { sessionId: 'rainfall' });
+  ch = (await h.call('course')).chapters[0];
+  assert.equal(ch.teaching['1.1'].completed, true);
+  assert.equal(ch.teaching['1.1'].done, undefined);
+  assert.equal(ch.sections[0].completedPoints, 1);
+  assert.equal(ch.lessonsDone, 0);
+  assert.equal(ch.teaching['1.2'], undefined);
+  const [book] = await h.call('list');
+  assert.equal(book.lastChapter, 0);
+  assert.deepEqual(book.progress[0], { title: ch.title, completed: 1, total: 2, done: false, started: true });
+  await link('1.2', 'streamflow');
+  await h.call('teaching-finish', { sessionId: 'streamflow' });
+  assert.equal((await h.call('chat')).phase, 'exam-ready');
+  assert.equal((await h.call('course')).chapters[0].lessonsDone, 1);
+  await assert.rejects(h.call('teaching-finish', { sessionId: 'unrelated' }), /linked/);
 });

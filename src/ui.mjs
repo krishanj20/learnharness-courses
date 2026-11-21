@@ -1,3 +1,4 @@
+import { pointFinished } from './passages.mjs';
 import { bookQuestions } from './exam-threads.mjs';
 import { openTeaching } from './open-teaching.mjs';
 import { GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -220,7 +221,11 @@ export function activate(ctx) {
         forgetPdf();
         reset();
         const list = await call('list');
-        heading('h1', 'Courses');
+        const header = el('header', null, 'bc-library-head');
+        const intro = el('div');
+        intro.append(el('h1', 'Your books'));
+        if (list.length)
+          intro.append(el('p', list.length + (list.length === 1 ? ' saved course' : ' saved courses')));
         const input = el('input');
         input.type = 'file';
         input.accept = '.pdf,application/pdf';
@@ -231,24 +236,88 @@ export function activate(ctx) {
         add.onclick = () => {
           if (!locked) input.click();
         };
-        body.append(add, input);
-        if (!list.length) body.append(el('p', 'Choose a book as a PDF to create your first course.'));
+        header.append(intro, add, input);
+        body.append(header);
+        if (!list.length) {
+          const empty = el('section', null, 'bc-empty');
+          empty.append(
+            el('h2', 'Start with a book'),
+            el('p', 'Choose a PDF with Create course to turn its chapters into readings, lessons and exams.'),
+          );
+          body.append(empty);
+        }
         const suggested = list
           .filter((item) => item.practiceOffer)
           .sort((a, b) => a.practiceOffer.priority - b.practiceOffer.priority)[0];
-        if (suggested) body.append(practiceSuggestion(suggested.practiceOffer, suggested));
+        const shelf = el('div', null, 'bc-shelf');
+        body.append(shelf);
         for (const item of list) {
-          const row = el('article', null, 'bc-card');
+          const row = el('article', null, 'bc-book');
+          const title = el('h2');
+          const outline = async () => {
+            course = await call('course', { id: item.id });
+            paintCourse();
+          };
+          title.append(button(item.title, outline));
+          const done = item.progress.filter((ch) => ch.done).length;
+          const completed = item.progress.reduce((n, ch) => n + ch.completed, 0);
+          const total = item.progress.reduce((n, ch) => n + ch.total, 0);
+          const progressText =
+            completed + ' of ' + total + (total === 1 ? ' subpart complete' : ' subparts complete');
+          const meter = el('progress');
+          meter.max = total || 1;
+          meter.value = completed;
+          meter.setAttribute('aria-label', item.title + ': ' + progressText);
           row.append(
-            button(item.title, async () => {
-              course = await call('course', { id: item.id });
-              paintCourse();
-            }),
-            el('p', item.count + ' chapters · ' + item.prepared + ' planned'),
+            title,
+            el(
+              'p',
+              item.count + (item.count === 1 ? ' chapter' : ' chapters') + ' · ' + item.prepared + ' planned',
+              'bc-book-meta',
+            ),
+            meter,
+            el(
+              'p',
+              progressText + ' · ' + done + (done === 1 ? ' chapter done' : ' chapters done'),
+              'bc-book-progress',
+            ),
           );
-          body.append(row);
+          const recent = item.lastChapter;
+          let resume = item.progress[recent] && !item.progress[recent].done ? recent : -1;
+          if (resume < 0) resume = item.progress.findIndex((ch) => ch.started && !ch.done);
+          if (resume < 0) resume = item.progress.findIndex((ch) => !ch.done);
+          const footer = el('div', null, 'bc-book-next');
+          const actions = el('div', null, 'bc-book-actions');
+          if (resume >= 0) {
+            const continuing = item.progress.some((ch) => ch.started);
+            const next = button(continuing ? 'Continue learning' : 'Start reading', async () => {
+              course = await call('course', { id: item.id });
+              await openChapter(resume);
+              const target = body.querySelector('.bc-reading') ?? body.querySelector('.bc-exam');
+              if (target) {
+                target.tabIndex = -1;
+                target.focus();
+              }
+            });
+            next.setAttribute('aria-label', next.textContent + ' in ' + item.title);
+            footer.append(el('p', 'Chapter ' + (resume + 1) + ' · ' + item.progress[resume].title));
+            actions.append(next);
+          } else footer.append(el('strong', 'Course complete'));
+          const chapters = button('View chapters', outline);
+          chapters.setAttribute('aria-label', 'View chapters in ' + item.title);
+          actions.append(chapters);
+          footer.append(actions);
+          row.append(footer);
+          shelf.append(row);
           if (item.id === previousBook) row.querySelector('button').focus();
         }
+        if (suggested) body.append(practiceSuggestion(suggested.practiceOffer, suggested));
+      }
+      async function openChapter(i) {
+        questionId = null;
+        index = i;
+        openPlan = false;
+        await loadChat();
       }
       async function refreshCourse() {
         course = await call('course', { id: course.id });
@@ -320,15 +389,15 @@ export function activate(ctx) {
               true,
             ),
           );
+        const outline = el('section', null, 'bc-outline');
+        outline.append(el('h2', 'Chapters'));
+        body.append(outline);
         for (const [i, ch] of course.chapters.entries()) {
           const row = el('article', null, 'bc-card');
+          row.dataset.state =
+            ch.phase === 'complete' ? 'done' : ch.sections.some((s) => s.completedPoints) ? 'started' : '';
           row.append(
-            button(i + 1 + '. ' + ch.title, async () => {
-              questionId = null;
-              index = i;
-              openPlan = false;
-              await loadChat();
-            }),
+            button(i + 1 + '. ' + ch.title, () => openChapter(i)),
             el(
               'p',
               ch.phase === 'complete'
@@ -348,13 +417,27 @@ export function activate(ctx) {
                     : 'Awaiting plan · ' + ch.sections.length + ' readings',
             ),
           );
-          body.append(row);
+          const partial = ch.sections.find((s) => !s.done && s.completedPoints);
+          if (partial)
+            row.append(
+              el(
+                'small',
+                (partial.number ? '§' + partial.number + ' · ' : '') +
+                  partial.title +
+                  ' · ' +
+                  partial.completedPoints +
+                  ' of ' +
+                  partial.readings.length +
+                  ' subparts complete',
+              ),
+            );
+          outline.append(row);
           if (i === selected) row.querySelector('button').focus();
         }
       }
       async function loadChat() {
         await refreshCourse();
-        chat = await call('chat', { id: course.id, chapter: index });
+        chat = await call('chat', { id: course.id, chapter: index, remember: true });
         paintChat();
       }
       function args() {
@@ -453,7 +536,7 @@ export function activate(ctx) {
       }
       function nextPoint(ch, section) {
         const all = ch.sections[section].readings;
-        const unfinished = (p) => !ch.teaching?.[p.key]?.done && !ch.offlineLessons?.[p.key]?.finished;
+        const unfinished = (p) => !pointFinished(ch.teaching?.[p.key], ch.offlineLessons?.[p.key]);
         return (
           all.find((p) => p.key === chat.selectedPoint && unfinished(p)) ?? all.find(unfinished) ?? all[0]
         );
@@ -856,6 +939,7 @@ export function activate(ctx) {
           (unit) => !unit.done && unit.readings.some((p) => p.key === chat.selectedPoint),
         );
         const activeSection = preferred >= 0 ? preferred : chat.section;
+        if (studying) reading(ch, activeSection);
         const completed = ch.lessonsDone;
         heading('h2', chat.phase === 'complete' ? 'Chapter done' : 'Chapter lessons');
         body.append(el('p', completed + ' of ' + ch.sections.length + ' lessons done'));
@@ -865,7 +949,11 @@ export function activate(ctx) {
           const detail = el('details');
           const label = (unit.number ? '§' + unit.number + ' · ' : '') + unit.title;
           const status = unit.done ? 'Done' : i === activeSection ? 'Current lesson' : 'Available';
-          detail.append(el('summary', label + ' · ' + status));
+          const partial =
+            unit.completedPoints && !unit.done
+              ? ' · ' + unit.completedPoints + ' of ' + unit.readings.length + ' subparts complete'
+              : '';
+          detail.append(el('summary', label + ' · ' + status + partial));
           detail.open = i === reviewLesson;
           const target = nextPoint(ch, i);
           if (unit.readings.length > 1)
@@ -886,9 +974,11 @@ export function activate(ctx) {
                 p.title +
                   (entry?.done
                     ? ' · Demonstrated'
-                    : ch.offlineLessons?.[p.key]?.finished
-                      ? ' · Completed offline'
-                      : ''),
+                    : entry?.completed
+                      ? ' · Completed'
+                      : ch.offlineLessons?.[p.key]?.finished
+                        ? ' · Completed offline'
+                        : ''),
               ),
             );
             if (entry?.done) line.append(el('small', entry.done.reason));
@@ -897,6 +987,12 @@ export function activate(ctx) {
                 button('Read ' + p.title + ' · ' + span(p), () => openReader(p.start, p.end, i, p)),
               );
             line.append(startButton(ch, i, p));
+            if (entry?.sessionId && !pointFinished(entry, ch.offlineLessons?.[p.key]))
+              line.append(
+                button('Mark lesson complete', () =>
+                  act('teaching-finish', { sessionId: entry.sessionId }, 'Saving completion…'),
+                ),
+              );
             line.append(offlineButton(p));
             detail.append(line);
           }
@@ -926,7 +1022,6 @@ export function activate(ctx) {
           messages(older, chat.messages.slice(0, firstKnown));
           body.append(older);
         }
-        if (studying) reading(ch, activeSection);
         if (activeSection !== chat.section && (chat.phase === 'discussion' || chat.pending))
           heading('h2', 'Saved discussion · ' + s.title);
         if (studying) messages(body, chat.messages.slice(chat.sectionTurnStart ?? 0));
