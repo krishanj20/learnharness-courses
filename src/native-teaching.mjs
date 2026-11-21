@@ -120,6 +120,21 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
     ch.chat.rev++;
     save(a.id, c);
   }
+  ctx.events?.on((event) => {
+    if (event.type !== 'turn-settled' || !links.has(event.chatId)) return;
+    const { entry } = coursePoint(links.get(event.chatId));
+    if (entry?.sessionId === event.chatId && pointFinished(entry))
+      ctx.events.emit('teaching-settled', { sessionId: event.chatId });
+  });
+  ctx.handle('finished-teachings', () =>
+    ids().flatMap((id) =>
+      state(id).chapters.flatMap((ch) =>
+        Object.values(ch.teaching ?? {})
+          .filter((entry) => entry.sessionId && pointFinished(entry))
+          .map((entry) => entry.sessionId),
+      ),
+    ),
+  );
   ctx.handle('teaching-location', ({ sessionId }) => links.get(sessionId) ?? null);
   ctx.handle('teaching-start', (a) => {
     const { c, ch, section, point, topic } = coursePoint(a);
@@ -164,7 +179,7 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
       (first
         ? 'Start with a short adaptive chapter diagnostic. Ask one question at a time about the reading and probe related chapter outcomes when my answers suggest I know more. '
         : 'Start with the selected subpoint and keep questions focused on it. Earlier sections are optional. ') +
-      'Use your normal interactive probe, quiz and explain tools. Match the depth to my answers. Call course_check_progress after the diagnostic and when I demonstrate the subpoint. When we finish the agreed lesson, call course_finish_lesson before your closing summary, including when I finished with guidance or multiple-choice answers. If I already understand it, direct me back to Courses for the next gap or the chapter exam.' +
+      'Use your normal interactive probe, quiz and explain tools. Match the depth to my answers. Call course_check_progress after the diagnostic and when I demonstrate the subpoint. When we finish the agreed lesson, call course_finish_lesson before your closing summary. In your own visible tutor prose, recap the principle we covered and how to apply it. Record completion even when I finished with guidance or multiple-choice answers. If I already understand it, direct me back to Courses for the next gap or the chapter exam.' +
       '\n\nAssigned book reading\n' +
       [openingExcerpt(assigned.opening, 3200), openingExcerpt(assigned.pages, 12000)]
         .filter(Boolean)
@@ -326,7 +341,7 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
           name: 'course_finish_lesson',
           label: 'Finish course lesson',
           description:
-            'Record completion of this linked subpoint when the agreed teaching or review has finished. Call before the closing summary, even if independent mastery is unverified. Do not call for an intermediate quiz, diagnostic handoff, or unfinished lesson. Mastery is assessed separately by course_check_progress.',
+            'Record completion of this linked subpoint when the agreed teaching or review has finished. Call before the closing summary, even if independent mastery is unverified. Do not call for an intermediate quiz, diagnostic handoff, or unfinished lesson. Follow with a short learner-visible explanation of the principle and its application so LearnHarness can extract the idea. Mastery is assessed separately by course_check_progress.',
           parameters,
           execute: async () => result(finish(chatId)),
         },

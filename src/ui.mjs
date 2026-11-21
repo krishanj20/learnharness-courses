@@ -1,5 +1,6 @@
 import { pointFinished } from './passages.mjs';
 import { bookQuestions } from './exam-threads.mjs';
+import { courseGraph } from './course-graph.mjs';
 import { openTeaching } from './open-teaching.mjs';
 import { GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import worker from 'bundled-pdf-worker';
@@ -26,6 +27,21 @@ export function activate(ctx) {
   const workerUrl = URL.createObjectURL(new Blob([worker], { type: 'text/javascript' }));
   GlobalWorkerOptions.workerSrc = workerUrl;
   ctx.signal.addEventListener('abort', () => URL.revokeObjectURL(workerUrl), { once: true });
+  const { sync: syncGraph, onEvent } = courseGraph(ctx.signal);
+  ctx.onAppEvent(onEvent);
+  ctx.onNotification((event) => {
+    if (event.topic === 'teaching-settled' && event.data?.sessionId) void syncGraph(event.data.sessionId);
+  });
+  async function catchUpFinishedTeachings() {
+    const sessions = await ctx.call('finished-teachings');
+    for (const id of sessions) {
+      if (ctx.signal.aborted) return;
+      await syncGraph(id);
+    }
+  }
+  void catchUpFinishedTeachings().catch(() => {
+    /* Opening a chapter retries from saved coverage. */
+  });
   let returning;
   ctx.registerAction({
     id: 'open-courses',
@@ -318,6 +334,18 @@ export function activate(ctx) {
         index = i;
         openPlan = false;
         await loadChat();
+        void updateChapterGraph();
+      }
+      async function updateChapterGraph() {
+        const entries = Object.values(course.chapters[index].teaching ?? {}).filter(
+          (entry) => entry.sessionId,
+        );
+        const results = [];
+        for (const entry of entries) {
+          if (signal.aborted) break;
+          results.push(await syncGraph(entry.sessionId));
+        }
+        return [...new Set(results)].join(' ');
       }
       async function refreshCourse() {
         course = await call('course', { id: course.id });
@@ -446,6 +474,7 @@ export function activate(ctx) {
       async function act(op, data, feedback = 'Working…') {
         show(feedback);
         await call(op, { ...args(), ...data });
+        if (op === 'teaching-finish') void syncGraph(data.sessionId);
         await loadChat();
         show('');
       }
@@ -1007,6 +1036,8 @@ export function activate(ctx) {
             openReader(ch.start, ch.end),
           ),
         );
+        if (Object.values(ch.teaching ?? {}).some((entry) => entry.sessionId))
+          body.append(button('Update knowledge graph', async () => show(await updateChapterGraph())));
         examOverview(ch, studying);
         if (reviewLesson === 'exam') body.querySelector('.bc-exam button')?.focus();
         else if (reviewLesson != null) lessons.children[reviewLesson].querySelector('button').focus();
@@ -1076,6 +1107,7 @@ export function activate(ctx) {
             .find((p) => p.key === destination.key);
           return openOffline(point);
         }
+        void syncGraph(destination.sessionId);
         const feedback = await call('teaching-check', { sessionId: destination.sessionId });
         await loadChat();
         show(feedback);

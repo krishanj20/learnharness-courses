@@ -425,6 +425,55 @@ export async function runSyntheticChecks({
   const addr = { id, chapter: 0 };
   await call('prepare', addr);
   assert.ok(fixture.requests.some((r) => Array.isArray(r.priorAnswers) && !r.priorAnswers.length));
+  if (process.argv.includes('--graph-pilot')) {
+    const catchup = process.argv.includes('--graph-catchup');
+    if (catchup) await api('/api/settings/graph', 'PUT', { enabled: false });
+    await click('1. ' + course.chapters[0].title);
+    await click('I’ve read this section · Start Teaching');
+    await click('Reference measurement');
+    await click('Submit answer');
+    const chatId = new URL(page().url()).pathname.split('/').at(-1);
+    if (catchup) {
+      await page().waitForFunction(
+        async (id) => {
+          const c = await (await fetch('/api/chats/' + id)).json();
+          return c.coverage?.uncoveredCount > 0 && !c.turnInFlight;
+        },
+        {},
+        chatId,
+      );
+      await click('Courses');
+      await click('Update knowledge graph');
+      await see('off in Settings', '.bc-status');
+      assert.equal((await api('/api/graph')).nodes.length, 0);
+      await api('/api/settings/graph', 'PUT', { enabled: true });
+      await stop();
+      await launch();
+    }
+    await page().waitForFunction(
+      async (id) => {
+        const c = await (await fetch('/api/chats/' + id)).json();
+        return c.coverage?.coveredCount > 0 && c.coverage.uncoveredCount === 0;
+      },
+      { timeout: 60000 },
+      chatId,
+    );
+    const graph = await api('/api/graph');
+    const node = graph.nodes.find((n) => n.name === 'Measurement baseline');
+    assert.ok(node?.provenance.some((p) => p.chatId === chatId && p.messageId));
+    const before = (await api('/api/chats/' + chatId)).extractions.length;
+    if (catchup) {
+      await click('Courses');
+      await click('Continue learning');
+    } else await click('Courses');
+    await click('Update knowledge graph');
+    await see('up to date', '.bc-status');
+    assert.equal((await api('/api/chats/' + chatId)).extractions.length, before);
+    await observe(
+      'Short native course Teaching produced a graph proposition linked to its tutor message; returning and checking again left extraction count unchanged.',
+    );
+    return;
+  }
   let state = await call('chat', addr);
   while (state.phase === 'reading') {
     await call('turn', { ...addr, action: 'read' });

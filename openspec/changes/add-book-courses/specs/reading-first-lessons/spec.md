@@ -73,3 +73,18 @@ A learner SHALL be able to prepare a selected course subpoint while connected, i
 - **WHEN** the learner starts a section or subheading before completing earlier lessons
 - **THEN** Courses opens the selected reading and its regular Teaching, checks understanding of that topic, and resumes it on return
 - **AND** progress counts the sections actually finished and leaves unvisited sections available
+
+### Requirement: Include course Teachings in the host knowledge graph
+With the knowledge graph enabled, Courses SHALL request host extraction of remaining tutor explanations when a linked Teaching finishes or its chapter is revisited. Graph provenance SHALL identify the original Teaching and message. Extracting a concept SHALL preserve the learner's course mastery record.
+
+#### Scenario: Short completed Teaching
+- **WHEN** a linked native Teaching finishes below the host's automatic extraction threshold
+- **THEN** Courses requests extraction after the tutor's closing turn is saved
+
+#### Scenario: Previously finished Teaching
+- **WHEN** LearnHarness starts with a finished Teaching that has uncovered tutor explanations
+- **THEN** Courses requests extraction through the host, and a fully processed lesson triggers no further request
+
+#### Scenario: Graph switched off
+- **WHEN** a Teaching finishes with graph extraction disabled
+- **THEN** Courses retains the lesson and issues no extraction request

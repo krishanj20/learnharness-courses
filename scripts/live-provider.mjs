@@ -136,7 +136,36 @@ export async function startFixture() {
       const prompt = body.messages.find((m) => m.role === 'user')?.content;
       const hasCourse = body.tools?.some((t) => t.function.name === 'course_reading');
       let delta, finish;
-      if (hasCourse) {
+      const graphPilot = process.argv.includes('--graph-pilot');
+      const toolCall = (name, args) => ({
+        role: 'assistant',
+        tool_calls: [
+          {
+            index: 0,
+            id: 'graph-' + name,
+            type: 'function',
+            function: { name, arguments: JSON.stringify(args) },
+          },
+        ],
+      });
+      const statement =
+        'A baseline supplies the reference value against which a new measurement is compared.';
+      const hasTool = (name) => body.tools?.some((t) => t.function.name === name);
+      if (graphPilot && hasTool('submit_findings')) {
+        const match = /TEACHER \[([^\]]+)\] [^\n]*A baseline supplies/.exec(
+          typeof prompt === 'string' ? prompt : JSON.stringify(prompt),
+        );
+        delta = toolCall('submit_findings', {
+          propositions: match
+            ? [{ id: 'p1', name: 'Measurement baseline', statement, messageId: match[1] }]
+            : [],
+          chains: [],
+        });
+        finish = 'tool_calls';
+      } else if (graphPilot && hasTool('submit_review')) {
+        delta = toolCall('submit_review', { links: [] });
+        finish = 'tool_calls';
+      } else if (hasCourse) {
         const sourceResult = body.messages.find(
           (m) => m.role === 'tool' && JSON.stringify(m.content).includes('chapterMap'),
         );
@@ -151,8 +180,18 @@ export async function startFixture() {
           (m) => Array.isArray(m.content) && m.content.some((p) => p.type === 'image_url'),
         );
         const answered = body.messages.some((m) => m.role === 'tool' && m.tool_call_id === 'native-probe');
-        if (answered) {
-          delta = { role: 'assistant', content: 'Return to Courses to check your progress.' };
+        if (
+          graphPilot &&
+          answered &&
+          !body.messages.some((m) => m.tool_call_id === 'graph-course_finish_lesson')
+        ) {
+          delta = toolCall('course_finish_lesson', {});
+          finish = 'tool_calls';
+        } else if (answered) {
+          delta = {
+            role: 'assistant',
+            content: graphPilot ? statement : 'Return to Courses to check your progress.',
+          };
           finish = 'stop';
         } else {
           const name = !sourceResult
@@ -160,20 +199,24 @@ export async function startFixture() {
             : definitions && !pageRequested
               ? 'course_page'
               : 'probe';
-          const correct = definitions
-            ? 'Ten percent'
-            : excess
-              ? 'Two percentage points'
-              : garch
-                ? 'The last squared shock and conditional variance'
-                : 'Portable claim';
-          const question = garch
-            ? 'Which information determines next period’s variance in GARCH(1, 1)?'
+          const correct = graphPilot
+            ? 'Reference measurement'
             : definitions
-              ? 'On PDF p. 59, what is the simple return when the price rises from 100 to 110?'
+              ? 'Ten percent'
               : excess
-                ? 'How much did a portfolio earning 5% outperform a 3% benchmark?'
-                : 'Which feature lets a security change hands?';
+                ? 'Two percentage points'
+                : garch
+                  ? 'The last squared shock and conditional variance'
+                  : 'Portable claim';
+          const question = graphPilot
+            ? 'What does a baseline provide?'
+            : garch
+              ? 'Which information determines next period’s variance in GARCH(1, 1)?'
+              : definitions
+                ? 'On PDF p. 59, what is the simple return when the price rises from 100 to 110?'
+                : excess
+                  ? 'How much did a portfolio earning 5% outperform a 3% benchmark?'
+                  : 'Which feature lets a security change hands?';
           const args =
             name === 'course_page'
               ? { page: 59 }
@@ -183,19 +226,23 @@ export async function startFixture() {
                     options: [
                       { label: correct },
                       {
-                        label: definitions
-                          ? 'One percent'
-                          : excess
-                            ? 'Eight percentage points'
-                            : 'Fixed owner',
+                        label: graphPilot
+                          ? 'Final measurement'
+                          : definitions
+                            ? 'One percent'
+                            : excess
+                              ? 'Eight percentage points'
+                              : 'Fixed owner',
                       },
                     ],
                     correctAnswer: correct,
-                    explanation: definitions
-                      ? 'Divide the gain by the original price.'
-                      : excess
-                        ? 'Subtract the benchmark from the portfolio return.'
-                        : 'The claim can pass to another holder.',
+                    explanation: graphPilot
+                      ? statement
+                      : definitions
+                        ? 'Divide the gain by the original price.'
+                        : excess
+                          ? 'Subtract the benchmark from the portfolio return.'
+                          : 'The claim can pass to another holder.',
                   }
                 : {};
           delta = {
@@ -279,7 +326,10 @@ export async function startFixture() {
     settings: {
       version: 1,
       customProvider: { baseUrl, models: [{ id, image: true }], authMode: 'keyless' },
-      models: { strong: { model: { provider: 'custom', id } } },
+      models: {
+        strong: { model: { provider: 'custom', id } },
+        ...(process.argv.includes('--graph-pilot') ? { cheap: { model: { provider: 'custom', id } } } : {}),
+      },
     },
   };
 }
