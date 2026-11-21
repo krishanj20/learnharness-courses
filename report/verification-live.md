@@ -83,3 +83,7 @@ In a separate disposable profile the configured ChatGPT model responded to the s
 On 21 November 2026, a disposable stock LearnHarness desktop profile converted EQI’s **The Securities** from the regular Teaching toolbar. With outside network traffic blocked and the scripted model disconnected, the desktop reopened the assigned PDF, displayed feedback for a wrong choice, and recovered that answer after a second cold launch. Finishing the second check advanced the chapter by one lesson. The original Teaching session ID survived. Only the chosen lesson was prepared, and completing its checks added no independent mastery evidence.
 
 In a separate disposable profile, the configured LearnHarness model prepared **Definitions** from EQI Chapter 2 with the source text and page images. Its two saved checks tested dividend-adjusted return and portfolio dollar profit. The answer keys matched the calculations of 2.5% and $16.
+
+## Study sections in any order in Courses 0.1.8
+
+On 21 November 2026 the stock desktop app imported EQI into a disposable profile. With zero Chapter 2 lessons completed, **Study this section** under §2.2 opened PDF page 69. The reading acknowledgement launched the GARCH Teaching. Returning to Courses restored §2.2 and the original session. Definitions had no session or credit. The desktop exercise used a scripted tutor. In a separate fresh profile the configured model opened the assigned GARCH reading and asked the learner what they wanted to be able to do with that subpoint.

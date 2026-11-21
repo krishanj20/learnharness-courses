@@ -66,6 +66,36 @@ export async function runCourseChecks({
   await observe(
     '496-page file selected through Create course and stored byte-for-byte, with 14 chapters and Chapter 10 exercises on 355 and 361',
   );
+  if (process.argv.includes('--jump-section')) {
+    await click('2. ' + course.chapters[1].title);
+    await see('0 of 4 lessons done', '.book-courses');
+    const section = await page().waitForSelector('.bc-lessons li:nth-child(2) summary');
+    await section.click();
+    await page().$eval('.bc-lessons li:nth-child(2) details', (el) =>
+      [...el.querySelectorAll('button')].find((b) => b.textContent === 'Study this section').click(),
+    );
+    await page().waitForSelector('canvas[aria-label="Original PDF page 69"]');
+    const point = 'GARCH(1, 1) and Return Stylized Facts';
+    await click('I’ve read ' + point + ' · Start Teaching');
+    await see('Which information determines next period', '[data-testid="question-dock"]');
+    const sessionId = new URL(page().url()).pathname.split('/').at(-1);
+    const opening = (await api('/api/chats/' + sessionId)).messages[0].content;
+    assert.ok(
+      opening.includes('Teach me “' + point + '”') &&
+        opening.includes('PDF p. 69') &&
+        !opening.includes('short adaptive chapter diagnostic'),
+    );
+    await click('Courses');
+    await see('§2.2 · ' + point, '.bc-reading h2');
+    await see('0 of 4 lessons done', '.book-courses');
+    const saved = await call('course', { id });
+    assert.equal(saved.chapters[1].teaching['2.1'].sessionId, sessionId);
+    assert.ok(!saved.chapters[1].teaching['1.1']);
+    await observe(
+      'Fresh EQI Chapter 2 started §2.2 at PDF p. 69 and opened the GARCH Teaching. Returning to Courses selected the same lesson and Definitions remained untouched.',
+    );
+    return;
+  }
   await click(chapter);
   await see('Printed pp. 5–9 · PDF pp. 33–37', '.bc-reading');
   await see('Modes of Exchange', '.bc-reading');
@@ -217,7 +247,7 @@ export async function runCourseChecks({
   await page().waitForSelector('canvas[aria-label="Original PDF page 99"]');
   await click('Back to exam');
   assert.equal((await call('chat', { id, chapter: 1 })).phase, 'reading');
-  await see('§2.4 · Appendix · Upcoming', '.bc-lessons');
+  await see('§2.4 · Appendix · Available', '.bc-lessons');
   await see('Start with the chapter introduction before §2.1.', '.bc-reading');
   await see('Stop at “Excess Returns”.', '.bc-reading');
   await click('Read whole section');

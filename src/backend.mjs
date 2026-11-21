@@ -92,29 +92,39 @@ export function activate(ctx) {
       title: c.title,
       warnings: c.warnings,
       practiceOffer: practiceOffer(c.chapters),
-      chapters: c.chapters.map(({ chat, reviews, offlineLessons, ...ch }, i) => ({
-        offlineLessons: Object.fromEntries(
-          Object.entries(offlineLessons ?? {}).map(([key, l]) => [
-            key,
-            { read: l.read, finished: l.finished },
-          ]),
-        ),
-        ...ch,
-        practice: practiceSummary({ ...ch, chat, reviews }),
-        sections: ch.sections.map((s, j) => {
+      chapters: c.chapters.map(({ chat, reviews, offlineLessons, ...ch }, i) => {
+        const studying = ['reading', 'discussion'].includes(chat.phase);
+        const sections = ch.sections.map((s, j) => {
           const start = j === 0 ? ch.start : s.start;
+          const readings = pointReadings(s, j, start, source.pages);
+          const done =
+            !studying ||
+            j < chat.section ||
+            readings.every((p) => ch.teaching?.[p.key]?.done || offlineLessons?.[p.key]?.finished);
           return {
             ...s,
             start,
             firstLabel: source.pages[start - 1].label,
             includesIntroduction: j === 0 && chapterOpening(source, source.chapters[i]).length > 0,
-            readings: pointReadings(s, j, start, source.pages),
+            readings,
+            done,
           };
-        }),
-        needsPlan: needsPlan({ ...ch, chat }),
-        phase: chat.phase,
-        lessonsDone: ['reading', 'discussion'].includes(chat.phase) ? chat.section : ch.sections.length,
-      })),
+        });
+        return {
+          offlineLessons: Object.fromEntries(
+            Object.entries(offlineLessons ?? {}).map(([key, l]) => [
+              key,
+              { read: l.read, finished: l.finished },
+            ]),
+          ),
+          ...ch,
+          practice: practiceSummary({ ...ch, chat, reviews }),
+          sections,
+          needsPlan: needsPlan({ ...ch, chat }),
+          phase: chat.phase,
+          lessonsDone: sections.filter((s) => s.done).length,
+        };
+      }),
     };
   }
   registerTeaching(ctx, {

@@ -650,7 +650,7 @@ test('native Teaching scopes the first diagnostic to the book and credits only d
   const start = (key) => h.call('teaching-start', { key });
   const first = await start('1.1');
   assert.match(first.opening, /short adaptive chapter diagnostic/);
-  await assert.rejects(start('2.1'), /Read the assigned/);
+  assert.match((await start('2.1')).opening, /Teach me “Capacity”/);
   sessions.push({
     id: 'native',
     title: first.provisional,
@@ -1097,4 +1097,44 @@ test('optional offline lessons preserve live work, survive disconnection and adv
   const ch = (await h.call('course')).chapters[0];
   assert.equal(ch.teaching?.['1.1']?.done, undefined);
   assert.deepEqual(ch.offlineLessons['2.1'], { read: true, finished: true });
+});
+
+test('study the later section first without testing or crediting the earlier section', async (t) => {
+  const sessions = [];
+  const h = host(t, [chapter(sections)], sessions);
+  h.reply((i) => plan(i));
+  await h.call('prepare');
+  const later = await h.call('teaching-start', { key: '2.1', wholeSection: true });
+  assert.match(later.opening, /Teach me “Capacity”/);
+  assert.doesNotMatch(later.opening, /short adaptive chapter diagnostic/);
+  sessions.push({
+    id: 'later',
+    title: later.provisional,
+    kind: 'teach',
+    messages: [
+      reasonedQuiz(
+        'work',
+        'Why does capacity decline?',
+        'Impact rises',
+        'Larger trades consume more of the spread.',
+      ),
+    ],
+  });
+  await h.call('teaching-bind', { key: '2.1', sessionId: 'later' });
+  h.restart();
+  assert.equal((await h.call('chat')).selectedPoint, '2.1');
+  h.reply({ demonstrated: [{ point: '2.1', answerIds: ['work'], reason: 'Explained market impact.' }] });
+  await h.call('teaching-check', { sessionId: 'later' });
+  const ch = (await h.call('course')).chapters[0];
+  assert.deepEqual(
+    ch.sections.map((s) => s.done),
+    [false, true],
+  );
+  assert.equal(ch.lessonsDone, 1);
+  assert.ok(!ch.teaching['1.1']);
+  assert.equal((await h.call('chat')).phase, 'reading');
+  assert.equal((await h.call('chat')).readSection, undefined);
+  assert.deepEqual((await h.call('chat')).readSections, { 1: true });
+  assert.equal((await h.call('teaching-start', { key: '2.1' })).sessionId, 'later');
+  assert.match((await h.call('teaching-start', { key: '1.1' })).opening, /Volatility/);
 });

@@ -142,6 +142,7 @@ export async function startFixture() {
         );
         const opening = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
         const definitions = opening.includes('Teach me “Definitions”');
+        const garch = opening.includes('Teach me “GARCH(1, 1) and Return Stylized Facts”');
         const excess = opening.includes('Teach me “Excess Returns”');
         const pageRequested = body.messages.some((m) =>
           m.tool_calls?.some((t) => t.function.name === 'course_page'),
@@ -159,12 +160,20 @@ export async function startFixture() {
             : definitions && !pageRequested
               ? 'course_page'
               : 'probe';
-          const correct = definitions ? 'Ten percent' : excess ? 'Two percentage points' : 'Portable claim';
-          const question = definitions
-            ? 'On PDF p. 59, what is the simple return when the price rises from 100 to 110?'
+          const correct = definitions
+            ? 'Ten percent'
             : excess
-              ? 'How much did a portfolio earning 5% outperform a 3% benchmark?'
-              : 'Which feature lets a security change hands?';
+              ? 'Two percentage points'
+              : garch
+                ? 'The last squared shock and conditional variance'
+                : 'Portable claim';
+          const question = garch
+            ? 'Which information determines next period’s variance in GARCH(1, 1)?'
+            : definitions
+              ? 'On PDF p. 59, what is the simple return when the price rises from 100 to 110?'
+              : excess
+                ? 'How much did a portfolio earning 5% outperform a 3% benchmark?'
+                : 'Which feature lets a security change hands?';
           const args =
             name === 'course_page'
               ? { page: 59 }

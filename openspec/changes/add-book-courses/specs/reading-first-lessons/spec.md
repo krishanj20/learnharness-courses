@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Section lessons in each chapter
-The tutor SHALL organise the chapter lesson around the book’s sections in order, with a page-linked reading assignment before questioning on each section.
+The tutor SHALL organise the chapter lesson in the book’s display order while allowing study in any order, with a page-linked reading assignment before questioning on each section.
 
 #### Scenario: Before reading
 - **WHEN** a learner opens §1.1 for the first time
@@ -68,3 +68,8 @@ A learner SHALL be able to prepare a selected course subpoint while connected, i
 - **THEN** its reading, checks, answer feedback and completion work locally and progress survives restart
 - **AND** the original Teaching remains available and other lessons keep their chosen mode
 - **AND** finishing the checks counts towards chapter progression independently of any demonstration of mastery
+
+#### Scenario: Jump directly to a later section
+- **WHEN** the learner starts a section or subheading before completing earlier lessons
+- **THEN** Courses opens the selected reading and its regular Teaching, checks understanding of that topic, and resumes it on return
+- **AND** progress counts the sections actually finished and leaves unvisited sections available

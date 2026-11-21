@@ -451,10 +451,11 @@ export function activate(ctx) {
         if (!course.chapters[index].objectives) await prepare(index);
         await openTeaching(ctx, { id: course.id, chapter: index, key: point.key, wholeSection });
       }
-      function nextPoint(ch) {
-        const all = ch.sections[chat.section].readings;
+      function nextPoint(ch, section) {
+        const all = ch.sections[section].readings;
+        const unfinished = (p) => !ch.teaching?.[p.key]?.done && !ch.offlineLessons?.[p.key]?.finished;
         return (
-          all.find((p) => !ch.teaching?.[p.key]?.done && !ch.offlineLessons?.[p.key]?.finished) ?? all[0]
+          all.find((p) => p.key === chat.selectedPoint && unfinished(p)) ?? all.find(unfinished) ?? all[0]
         );
       }
       function offlineButton(point) {
@@ -537,20 +538,21 @@ export function activate(ctx) {
               ),
         );
       }
-      function startButton(ch, point, wholeSection = false) {
+      function startButton(ch, section, point, wholeSection = false) {
         const session = ch.teaching?.[point.key]?.sessionId;
         const label = session
           ? 'Resume Teaching · ' + point.title
-          : chat.readSection === chat.section
+          : chat.readSection === section || chat.readSections?.[section]
             ? 'Start Teaching · ' + point.title
-            : wholeSection || ch.sections[chat.section].readings.length === 1
+            : wholeSection || ch.sections[section].readings.length === 1
               ? 'I’ve read this section · Start Teaching'
               : 'I’ve read ' + point.title + ' · Start Teaching';
         return button(label, () => launchPoint(point, wholeSection), true);
       }
-      function reading(ch, s) {
+      function reading(ch, section) {
         const box = el('section', null, 'bc-reading');
-        const point = nextPoint(ch);
+        const s = ch.sections[section],
+          point = nextPoint(ch, section);
         const label = (s.number ? '§' + s.number + ' · ' : '') + point.title;
         box.append(el('h2', 'Read ' + label), el('p', span(point)));
         if (s.includesIntroduction && point === s.readings[0])
@@ -566,21 +568,19 @@ export function activate(ctx) {
           box.append(
             el('p', 'Check the heading on the original page. The importer could not match it exactly.'),
           );
-        box.append(button('Open assigned pages', () => openReader(point.start, point.end, null, point)));
+        box.append(button('Open assigned pages', () => openReader(point.start, point.end, section, point)));
         if (s.readings.length > 1)
-          box.append(button('Read whole section', () => openReader(s.start, s.end, null, point, true)));
-        if (!chat.pending) {
-          box.append(startButton(ch, point), offlineButton(point));
-          const entry = ch.teaching?.[point.key];
-          if (entry?.sessionId)
-            box.append(
-              button('Check teaching progress', async () => {
-                const feedback = await call('teaching-check', { sessionId: entry.sessionId });
-                await loadChat();
-                show(feedback);
-              }),
-            );
-        }
+          box.append(button('Read whole section', () => openReader(s.start, s.end, section, point, true)));
+        box.append(startButton(ch, section, point), offlineButton(point));
+        const entry = ch.teaching?.[point.key];
+        if (entry?.sessionId)
+          box.append(
+            button('Check teaching progress', async () => {
+              const feedback = await call('teaching-check', { sessionId: entry.sessionId });
+              await loadChat();
+              show(feedback);
+            }),
+          );
         body.append(box);
       }
       async function openReader(
@@ -609,20 +609,15 @@ export function activate(ctx) {
         );
         const ch = course.chapters[index];
         if (point) {
-          const stop = wholeSection ? ch.sections[chat.section].stop : point.stop;
+          const stop = wholeSection ? ch.sections[lessonIndex].stop : point.stop;
           body.append(
             el(
               'p',
-              (wholeSection ? ch.sections[chat.section].title : point.title) +
+              (wholeSection ? ch.sections[lessonIndex].title : point.title) +
                 (stop ? ' · Stop at “' + stop + '”.' : ''),
             ),
           );
-          if (
-            !chat.pending &&
-            ['reading', 'discussion'].includes(chat.phase) &&
-            (lessonIndex === null || lessonIndex === chat.section)
-          )
-            body.querySelector('nav').append(startButton(ch, point, wholeSection));
+          body.querySelector('nav').append(startButton(ch, lessonIndex, point, wholeSection));
         }
         closeReader = await scrollReader(body, doc, labels, start, end);
         if (signal.aborted) closeReader();
@@ -857,6 +852,10 @@ export function activate(ctx) {
           );
         } else plan(ch);
         const studying = ['reading', 'discussion'].includes(chat.phase);
+        const preferred = ch.sections.findIndex(
+          (unit) => !unit.done && unit.readings.some((p) => p.key === chat.selectedPoint),
+        );
+        const activeSection = preferred >= 0 ? preferred : chat.section;
         const completed = ch.lessonsDone;
         heading('h2', chat.phase === 'complete' ? 'Chapter done' : 'Chapter lessons');
         body.append(el('p', completed + ' of ' + ch.sections.length + ' lessons done'));
@@ -865,12 +864,17 @@ export function activate(ctx) {
           const row = el('li');
           const detail = el('details');
           const label = (unit.number ? '§' + unit.number + ' · ' : '') + unit.title;
-          const status = i < completed ? 'Done' : i === chat.section ? 'Current lesson' : 'Upcoming';
+          const status = unit.done ? 'Done' : i === activeSection ? 'Current lesson' : 'Available';
           detail.append(el('summary', label + ' · ' + status));
           detail.open = i === reviewLesson;
+          const target = nextPoint(ch, i);
+          if (unit.readings.length > 1)
+            detail.append(
+              button('Study this section', () => openReader(target.start, target.end, i, target)),
+            );
           detail.append(
             button('Read ' + label + ' · ' + span(unit), () =>
-              openReader(unit.start, unit.end, i, i === chat.section ? nextPoint(ch) : null, true),
+              openReader(unit.start, unit.end, i, nextPoint(ch, i), true),
             ),
           );
           for (const p of unit.readings) {
@@ -892,18 +896,7 @@ export function activate(ctx) {
               line.append(
                 button('Read ' + p.title + ' · ' + span(p), () => openReader(p.start, p.end, i, p)),
               );
-            if (
-              entry?.sessionId ||
-              entry?.done ||
-              ch.offlineLessons?.[p.key]?.finished ||
-              (i === chat.section && chat.readSection === i && !chat.pending)
-            )
-              line.append(
-                button(
-                  entry?.sessionId ? 'Open Teaching' : entry?.done ? 'Review in Teaching' : 'Start Teaching',
-                  () => launchPoint(p),
-                ),
-              );
+            line.append(startButton(ch, i, p));
             line.append(offlineButton(p));
             detail.append(line);
           }
@@ -933,7 +926,9 @@ export function activate(ctx) {
           messages(older, chat.messages.slice(0, firstKnown));
           body.append(older);
         }
-        if (studying) reading(ch, s);
+        if (studying) reading(ch, activeSection);
+        if (activeSection !== chat.section && (chat.phase === 'discussion' || chat.pending))
+          heading('h2', 'Saved discussion · ' + s.title);
         if (studying) messages(body, chat.messages.slice(chat.sectionTurnStart ?? 0));
         if (studying && chat.pending) {
           body.append(
