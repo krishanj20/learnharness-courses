@@ -66,9 +66,134 @@ export async function runCourseChecks({
   await observe(
     '496-page file selected through Create course and stored byte-for-byte, with 14 chapters and Chapter 10 exercises on 355 and 361',
   );
+  if (process.argv.includes('--companion')) {
+    const i = course.chapters.findIndex((ch) =>
+      ch.sections.some((s) => s.readings.some((p) => /\bPCA\b/.test(p.title))),
+    );
+    assert.ok(i >= 0);
+    await click(i + 1 + '. ' + course.chapters[i].title);
+    await click('Open assigned pages');
+    await page().waitForSelector('.bc-reader canvas');
+    await page().click('.bc-navigation .bc-primary');
+    const dock = '[data-testid="question-dock"]';
+    await see('B contains asset loadings', dock);
+    assert.ok(fixture.requests.some((r) => r.formulaInstructions && r.pageRequested && r.pageVisible));
+    await page().waitForSelector(dock + ' .katex');
+    const chatUrl = page().url();
+    await page().setViewport({ width: 1440, height: 900 });
+    await click('Book PDF');
+    await page().waitForSelector('.bc-companion canvas[aria-label="Original PDF page 244"]');
+    assert.equal(page().url(), chatUrl);
+    for (const width of [1440, 760]) {
+      await page().setViewport({ width, height: 900 });
+      const fits = await page().evaluate((d) => {
+        const chat = document.querySelector(d).getBoundingClientRect();
+        const book = document.querySelector('.bc-companion').getBoundingClientRect();
+        return chat.width > 200 && (chat.right <= book.left + 2 || chat.bottom <= book.top + 2);
+      }, dock);
+      assert.ok(fits, 'Both panes fit at width ' + width);
+      await page().screenshot({ path: path.join(scratch, 'companion-' + width + '.png') });
+    }
+    await page().$eval('.bc-companion input', (input) => {
+      input.value = '245';
+      input.form.requestSubmit();
+    });
+    await page().waitForSelector('.bc-companion canvas[aria-label="Original PDF page 245"]');
+    await page().select('.bc-companion select', '150');
+    assert.ok(await page().$eval('.bc-companion-pages', (e) => e.scrollWidth > e.clientWidth));
+    await enterReasoning('The shared dimension is the number of factors.');
+    await page().click('.bc-companion [aria-label="Close book PDF"]');
+    assert.ok(
+      await page().$eval('[data-testid="thinking-field"] [role="textbox"]', (e) =>
+        e.textContent.includes('shared dimension'),
+      ),
+    );
+
+    assert.equal(await page().$('.bc-companion'), null);
+    assert.equal(page().url(), chatUrl);
+    await observe(
+      'Rendered an equation in a native course question with its cited PDF page in an independently scrollable pane. Closing the book kept the same Teaching.',
+    );
+    return;
+  }
+  if (process.argv.includes('--chapter-ui')) {
+    const addr = { id, chapter: 1, key: course.chapters[1].sections[0].readings[0].key };
+    await call('prepare', addr);
+    await call('offline-prepare', addr);
+    await call('offline-read', addr);
+    for (const check of [0, 1]) await call('offline-answer', { ...addr, check, choice: 1 });
+    await call('offline-finish', addr);
+    await click('2. ' + course.chapters[1].title);
+    await see(course.chapters[1].sections[0].readings[1].title, '.bc-reading h2');
+    const pickerSelector = '.bc-jump select';
+    const meterValues = () =>
+      page().$$eval('.bc-topic progress', (meters) => meters.map((m) => [m.value, m.max]));
+    const expectedMeters = (await call('course', { id })).chapters[1].sections.map((s) => [
+      s.completedPoints,
+      s.readings.length,
+    ]);
+    assert.deepEqual(await meterValues(), expectedMeters);
+    assert.deepEqual(expectedMeters[0], [1, 5]);
+    const savedChapter = await call('chat', { id, chapter: 1 });
+    assert.equal(
+      await page().$$eval('.bc-jump option', (opts) => opts.filter((o) => !o.disabled).length),
+      course.chapters.length,
+    );
+    await page().select(pickerSelector, String(course.chapters.length - 1));
+    await see(course.chapters.at(-1).title, '.book-courses h1');
+    await click('Open assigned pages');
+    await page().waitForSelector('.bc-reader');
+    await page().select(pickerSelector, '1');
+    await see(course.chapters[1].sections[0].readings[1].title, '.bc-reading h2');
+    assert.deepEqual(await meterValues(), expectedMeters);
+    assert.deepEqual(await call('chat', { id, chapter: 1 }), savedChapter);
+    for (const width of [1280, 680]) {
+      await page().setViewport({ width, height: 900 });
+      assert.ok(await page().$eval('.bc-lessons', (e) => e.scrollWidth <= e.clientWidth + 1));
+      await page().screenshot({ path: path.join(scratch, 'chapter-' + width + '.png') });
+    }
+    await page().setViewport({ width: 1280, height: 900 });
+    await observe(
+      'Selected the final unprepared chapter, returned to the original chapter from its PDF reader, and verified every topic bar and the saved conversation.',
+    );
+    await page().click('.bc-lessons .bc-topic');
+    await see('Completed offline', '.bc-lessons details[open]');
+    const read = await page().waitForSelector('.bc-subpoint button');
+    await read.click();
+    await page().waitForSelector('.bc-reader canvas');
+    await observe('Expanded a topic and opened a subpart reading from its row.');
+    await click('Back to lesson');
+    await call('turn', { ...addr, action: 'read' });
+    await call('turn', {
+      ...addr,
+      action: 'answer',
+      text: 'I would compare both observations using the same baseline and the same measurement units. Changing the reference between observations would change the interpretation of the difference.',
+    });
+    await click('Back to chapters');
+    await click('2. ' + course.chapters[1].title);
+    const thread = await page().waitForSelector('.bc-thread:has(.bc-learner)');
+    await thread.evaluate((e) => e.scrollIntoView({ block: 'center' }));
+    for (const width of [1280, 680]) {
+      await page().setViewport({ width, height: 900 });
+      assert.ok(
+        await thread.evaluate((t) => {
+          const boxes = [...t.querySelectorAll('.bc-bubble')].map((el) => el.getBoundingClientRect());
+          return (
+            boxes.length >= 3 &&
+            boxes.every((r, i) => !i || r.top - boxes[i - 1].bottom >= 12) &&
+            t.scrollWidth <= t.clientWidth + 1
+          );
+        }),
+      );
+      await page().screenshot({ path: path.join(scratch, 'conversation-' + width + '.png') });
+    }
+    await observe('Checked tutor and learner bubble spacing with a multi-line reply in two desktop widths.');
+
+    return;
+  }
   if (process.argv.includes('--jump-section')) {
     await click('2. ' + course.chapters[1].title);
-    await see('0 of 4 lessons done', '.book-courses');
+    await see('0 of 4 sections complete', '.book-courses');
     const section = await page().waitForSelector('.bc-lessons li:nth-child(2) summary');
     await section.click();
     await page().$eval('.bc-lessons li:nth-child(2) details', (el) =>
@@ -87,7 +212,7 @@ export async function runCourseChecks({
     );
     await click('Courses');
     await see('§2.2 · ' + point, '.bc-reading h2');
-    await see('0 of 4 lessons done', '.book-courses');
+    await see('0 of 4 sections complete', '.book-courses');
     const saved = await call('course', { id });
     assert.equal(saved.chapters[1].teaching['2.1'].sessionId, sessionId);
     assert.ok(!saved.chapters[1].teaching['1.1']);
@@ -112,8 +237,8 @@ export async function runCourseChecks({
     'Reader scrolled through PDF pages 33–37 with no tutor question before the reading acknowledgement',
   );
   await click('Prepare chapter plan');
-  await see('I’ve read this section', '.bc-reading');
-  await click('I’ve read this section · Start Teaching');
+  await see('I’ve read it', '.bc-reading');
+  await click('I’ve read it · Start Teaching');
   await page().waitForFunction(() => location.pathname.startsWith('/chat/'));
   const sessionId = new URL(page().url()).pathname.split('/').at(-1);
   await see('Which feature lets a security change hands?');
@@ -147,7 +272,7 @@ export async function runCourseChecks({
     await see('Your answer · Bespoke terms', '.book-courses');
     await click('Standard terms');
     await click('Finish offline lesson');
-    await see('1 of 5 lessons done', '.book-courses');
+    await see('1 of 5 sections complete', '.book-courses');
     const result = await call('course', { id });
     assert.equal(result.chapters[0].teaching['1.1'].sessionId, sessionId);
     assert.deepEqual(Object.keys(result.chapters[0].offlineLessons), ['1.1']);
@@ -160,7 +285,7 @@ export async function runCourseChecks({
   await click('Courses');
   await see(chapter, '.book-courses h1');
   await see('Resume Teaching', '.bc-reading');
-  await click('Resume Teaching · The Securities');
+  await click('Resume Teaching');
   await page().waitForFunction((id) => location.pathname === '/chat/' + id, {}, sessionId);
   await see('Which feature lets a security change hands?');
   await click('Courses');
@@ -205,16 +330,16 @@ export async function runCourseChecks({
   await click('Finish lesson and start next lesson');
   await see('Modes of Exchange', '.bc-reading h2');
   await observe('Reconnect resumed the saved answer once and §1.2 reopened the reading gate');
-  await see('§1.1 · The Securities · Done', '.bc-lessons');
-  await see('§1.2 · Modes of Exchange · Current lesson', '.bc-lessons');
+  await see('Done', '.bc-lessons li:nth-child(1) .bc-topic-name small');
+  await see('Current lesson', '.bc-lessons li:nth-child(2) .bc-topic-name small');
   await page().$eval('.bc-lessons summary', (summary) => summary.click());
   await see(message, '.bc-lessons');
-  const reviewReading = 'Read §1.1 · The Securities · Printed pp. 5–9 · PDF pp. 33–37';
+  const reviewReading = 'Read pages · §1.1 · The Securities · Printed pp. 5–9 · PDF pp. 33–37';
   await click(reviewReading);
   await page().waitForSelector('canvas[aria-label="Original PDF page 33"]');
   await click('Back to lesson');
   await see(message, '.bc-lessons details[open]');
-  assert.equal(await page().evaluate(() => document.activeElement.textContent), reviewReading);
+  assert.equal(await page().evaluate(() => document.activeElement.getAttribute('aria-label')), reviewReading);
   const saved = await call('chat', { id, chapter: 0 });
   await click('Open assigned pages');
   await page().waitForSelector('canvas[aria-label="Original PDF page 37"]');
@@ -224,6 +349,18 @@ export async function runCourseChecks({
     [...document.querySelectorAll('.bc-navigation button')].find((b) => b.textContent === 'Back to chapters'),
   );
   assert.ok(await back.isIntersectingViewport({ threshold: 1 }));
+  // A stock-host announcement can arrive after reconnecting the disposable profile.
+  const announcement = await page().$('button[aria-label="Close announcement"]');
+  if (announcement) {
+    await announcement.click();
+    await page().waitForSelector('button[aria-label="Close announcement"]', { hidden: true });
+  }
+  const hit = await back.evaluate((b) => {
+    const r = b.getBoundingClientRect();
+    const at = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+    return { clickable: b.contains(at), hits: at?.outerHTML.slice(0, 180), top: r.top, height: r.height };
+  });
+  assert.ok(hit.clickable, JSON.stringify(hit));
   await back.click();
   await see(chapter, '.bc-card');
   assert.equal(await page().evaluate(() => document.activeElement.textContent), chapter);
@@ -240,16 +377,17 @@ export async function runCourseChecks({
     'Returned from scrolled PDF to chapters, then to all courses; reopening restored §1.2 and its transcript. The lesson also returned directly to chapters.',
   );
   await click('2. ' + course.chapters[1].title);
-  await see('0 of 4 lessons done', '.book-courses');
+  await see('0 of 4 sections complete', '.book-courses');
   await see('Available after all 4 lessons are done.', '.bc-exam');
   await see('Book exercises: 2.1, 2.2, 2.3, 2.5.', '.bc-exam');
   await click('View book questions · PDF p. 99');
   await page().waitForSelector('canvas[aria-label="Original PDF page 99"]');
   await click('Back to exam');
   assert.equal((await call('chat', { id, chapter: 1 })).phase, 'reading');
-  await see('§2.4 · Appendix · Available', '.bc-lessons');
+  await see('Available', '.bc-lessons li:nth-child(4) .bc-topic-name small');
   await see('Start with the chapter introduction before §2.1.', '.bc-reading');
   await see('Stop at “Excess Returns”.', '.bc-reading');
+  await page().click('.bc-reading .bc-options summary');
   await click('Read whole section');
   await page().waitForSelector('.bc-page[data-page="69"]');
   await click('Back to lesson');
@@ -283,7 +421,7 @@ export async function runCourseChecks({
   await page().$eval('.bc-lessons summary', (el) => el.click());
   await see('Definitions · Demonstrated', '.bc-lessons details[open]');
   await see('Stop at “Log Returns”.', '.bc-reading');
-  await click('I’ve read Excess Returns · Start Teaching');
+  await click('I’ve read it · Start Teaching');
   await page().waitForFunction(
     (id) => location.pathname.startsWith('/chat/') && !location.pathname.endsWith(id),
     {},
@@ -308,7 +446,7 @@ export async function runCourseChecks({
   );
   await click('Courses');
   await see('1 of 14 chapter subpoints demonstrated', '.bc-status');
-  await see('Resume Teaching · Excess Returns', '.bc-reading');
+  await see('Resume Teaching', '.bc-reading');
   await see('Available after all 4 lessons are done.', '.bc-exam');
   await click('Back to chapters');
   await observe(
@@ -389,7 +527,7 @@ export async function runCourseChecks({
     if (index === 0) {
       assert.equal(state.phase, 'complete');
       await click(chapter);
-      await see('5 of 5 lessons done', '.book-courses');
+      await see('5 of 5 sections complete', '.book-courses');
       await click('Back to chapters');
       await see('Chapter done', '.bc-card');
     }
@@ -429,7 +567,7 @@ export async function runSyntheticChecks({
     const catchup = process.argv.includes('--graph-catchup');
     if (catchup) await api('/api/settings/graph', 'PUT', { enabled: false });
     await click('1. ' + course.chapters[0].title);
-    await click('I’ve read this section · Start Teaching');
+    await click('I’ve read it · Start Teaching');
     await click('Reference measurement');
     await click('Submit answer');
     const chatId = new URL(page().url()).pathname.split('/').at(-1);
@@ -443,6 +581,7 @@ export async function runSyntheticChecks({
         chatId,
       );
       await click('Courses');
+      await page().click('.book-courses > div > .bc-options summary');
       await click('Update knowledge graph');
       await see('off in Settings', '.bc-status');
       assert.equal((await api('/api/graph')).nodes.length, 0);
@@ -466,6 +605,7 @@ export async function runSyntheticChecks({
       await click('Courses');
       await click('Continue learning');
     } else await click('Courses');
+    await page().click('.book-courses > div > .bc-options summary');
     await click('Update knowledge graph');
     await see('up to date', '.bc-status');
     assert.equal((await api('/api/chats/' + chatId)).extractions.length, before);

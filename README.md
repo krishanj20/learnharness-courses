@@ -4,9 +4,13 @@ Turn a searchable PDF into a personal course in stock LearnHarness. Open **Cours
 
 ## Install
 
-Download the [Courses plugin ZIP](downloads/book-courses-0.1.10.zip). Extract the **book-courses** folder into the directory shown in **Settings → Community plugins**, choose **Refresh plugins**, then enable **Courses**. The plugin targets LearnHarness 0.6.1 and plugin API 1.
+Download the [Courses plugin ZIP](downloads/book-courses-0.1.11.zip). Extract the **book-courses** folder into the directory shown in **Settings → Community plugins**, choose **Refresh plugins**, then enable **Courses**. The plugin targets LearnHarness 0.6.1 and plugin API 1.
 
 ## Study a book
+
+During a regular book Teaching, choose **Book PDF** in the top bar (or **… → Book PDF**). The scrollable reader opens beside the chat at the latest cited PDF page in the assignment, or at the start of the reading. Jump by PDF page number, zoom into equations, or return to the assignment. The tutor is prompted to typeset referenced equations and explain their notation in the question.
+
+Inside a chapter, **Jump to chapter** opens any chapter in the book. Each topic row shows its completed subparts and expands to its readings. **Reading options** includes offline study and the full section.
 
 The library shows completed subparts and finished chapters for each book. Select a title for its chapter outline, or choose **Continue learning** to go straight to the assigned reading or exam in your last unfinished chapter.
 

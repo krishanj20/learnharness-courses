@@ -1,6 +1,6 @@
 // Reserve space for every assigned page so ordinary scrolling works before
 // rendering finishes. Only nearby pages need a full-resolution bitmap.
-export async function scrollReader(parent, doc, labels, start, end) {
+export async function scrollReader(parent, doc, labels, start, end, viewportRoot = null) {
   const first = await doc.getPage(start);
   const size = first.getViewport({ scale: 1 });
   const reader = document.createElement('section');
@@ -22,7 +22,7 @@ export async function scrollReader(parent, doc, labels, start, end) {
         }
       }
     },
-    { rootMargin: '650px 0px' },
+    { root: viewportRoot, rootMargin: '650px 0px' },
   );
 
   async function paint(slot, job) {
@@ -73,7 +73,7 @@ export async function scrollReader(parent, doc, labels, start, end) {
     observer.observe(slot);
   }
   parent.append(reader);
-  parent.scrollIntoView({ block: 'start' });
+  if (!viewportRoot) parent.scrollIntoView({ block: 'start' });
   return () => {
     observer.disconnect();
     for (const task of tasks.values()) task.render?.cancel();

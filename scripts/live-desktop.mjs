@@ -129,12 +129,20 @@ async function api(endpoint, method = 'GET', payload) {
   );
 }
 async function click(name) {
+  if (['Book PDF', 'Offline course lesson'].includes(name)) {
+    const more = await page.evaluate(name => {
+      const visible = [...document.querySelectorAll('header button')].some(b => b.innerText.trim() === name);
+      return !visible && !!document.querySelector('button[aria-label="More plugin actions"][aria-expanded="false"]');
+    }, name);
+    if (more) await page.click('button[aria-label="More plugin actions"]');
+  }
   const found = await page.waitForFunction(
     (name) =>
       [...document.querySelectorAll('button')].find(
         (button) =>
           !button.disabled && !button.closest('[aria-busy="true"]') &&
-          (button.textContent.trim() === name || button.getAttribute('aria-label') === name),
+          (button.textContent.trim() === name || button.getAttribute('aria-label') === name ||
+            (button.closest('[data-testid="question-dock"]') && button.innerText.trim().split(/\n+/).at(-1) === name)),
       ),
     {},
     name,
@@ -213,13 +221,8 @@ async function enableAndCheckHost() {
     console.log('Checking filter', kind);
     await page.waitForFunction(
       (expected) => {
-        const titles = [...document.querySelectorAll('[data-testid^="session-row"]')].map(
-          (el) => el.innerText,
-        );
-        return (
-          titles.length === expected.length &&
-          expected.every((title) => titles.some((value) => value.includes(title)))
-        );
+        const lines = document.body.innerText.split('\n').map(s => s.trim());
+        return ['Test practice', 'Test teach'].every(title => lines.includes(title) === expected.includes(title));
       },
       {},
       expected,

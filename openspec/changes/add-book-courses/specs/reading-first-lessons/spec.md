@@ -88,3 +88,11 @@ With the knowledge graph enabled, Courses SHALL request host extraction of remai
 #### Scenario: Graph switched off
 - **WHEN** a Teaching finishes with graph extraction disabled
 - **THEN** Courses retains the lesson and issues no extraction request
+
+### Requirement: Read equations inside a Teaching
+When a course tutor uses an equation in a question, the question SHALL supply the verified starting relation and define its notation. The tutor SHALL leave the requested derivation or answer for the learner.
+
+#### Scenario: Consult the source alongside a Teaching
+- **WHEN** the learner opens Book PDF in a linked Teaching
+- **THEN** the session and its answer controls remain available alongside the original book, starting at the latest cited physical page in the assignment or its first page
+- **AND** the learner can scroll, jump by page number, zoom, and close the reader with their answer draft intact

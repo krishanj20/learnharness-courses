@@ -170,6 +170,7 @@ export async function startFixture() {
           (m) => m.role === 'tool' && JSON.stringify(m.content).includes('chapterMap'),
         );
         const opening = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        const pca = process.argv.includes('--companion') && opening.includes('PCA');
         const definitions = opening.includes('Teach me “Definitions”');
         const garch = opening.includes('Teach me “GARCH(1, 1) and Return Stylized Facts”');
         const excess = opening.includes('Teach me “Excess Returns”');
@@ -196,53 +197,61 @@ export async function startFixture() {
         } else {
           const name = !sourceResult
             ? 'course_reading'
-            : definitions && !pageRequested
+            : (definitions || pca) && !pageRequested
               ? 'course_page'
               : 'probe';
-          const correct = graphPilot
-            ? 'Reference measurement'
-            : definitions
-              ? 'Ten percent'
-              : excess
-                ? 'Two percentage points'
-                : garch
-                  ? 'The last squared shock and conditional variance'
-                  : 'Portable claim';
-          const question = graphPilot
-            ? 'What does a baseline provide?'
-            : garch
-              ? 'Which information determines next period’s variance in GARCH(1, 1)?'
+          const correct = pca
+            ? 'Assets by dates'
+            : graphPilot
+              ? 'Reference measurement'
               : definitions
-                ? 'On PDF p. 59, what is the simple return when the price rises from 100 to 110?'
+                ? 'Ten percent'
                 : excess
-                  ? 'How much did a portfolio earning 5% outperform a 3% benchmark?'
-                  : 'Which feature lets a security change hands?';
+                  ? 'Two percentage points'
+                  : garch
+                    ? 'The last squared shock and conditional variance'
+                    : 'Portable claim';
+          const question = pca
+            ? 'For the fitted matrix $$\\widehat R=BF,$$ B contains asset loadings and F contains factor returns (PDF p. 244). If B is assets by factors and F is factors by dates, what is the shape of the fitted matrix?'
+            : graphPilot
+              ? 'What does a baseline provide?'
+              : garch
+                ? 'Which information determines next period’s variance in GARCH(1, 1)?'
+                : definitions
+                  ? 'On PDF p. 59, what is the simple return when the price rises from 100 to 110?'
+                  : excess
+                    ? 'How much did a portfolio earning 5% outperform a 3% benchmark?'
+                    : 'Which feature lets a security change hands?';
           const args =
             name === 'course_page'
-              ? { page: 59 }
+              ? { page: pca ? 244 : 59 }
               : name === 'probe'
                 ? {
                     question,
                     options: [
                       { label: correct },
                       {
-                        label: graphPilot
-                          ? 'Final measurement'
-                          : definitions
-                            ? 'One percent'
-                            : excess
-                              ? 'Eight percentage points'
-                              : 'Fixed owner',
+                        label: pca
+                          ? 'Factors by factors'
+                          : graphPilot
+                            ? 'Final measurement'
+                            : definitions
+                              ? 'One percent'
+                              : excess
+                                ? 'Eight percentage points'
+                                : 'Fixed owner',
                       },
                     ],
                     correctAnswer: correct,
-                    explanation: graphPilot
-                      ? statement
-                      : definitions
-                        ? 'Divide the gain by the original price.'
-                        : excess
-                          ? 'Subtract the benchmark from the portfolio return.'
-                          : 'The claim can pass to another holder.',
+                    explanation: pca
+                      ? 'The shared factor dimension is contracted in the product.'
+                      : graphPilot
+                        ? statement
+                        : definitions
+                          ? 'Divide the gain by the original price.'
+                          : excess
+                            ? 'Subtract the benchmark from the portfolio return.'
+                            : 'The claim can pass to another holder.',
                   }
                 : {};
           delta = {
@@ -266,6 +275,7 @@ export async function startFixture() {
         }
         requests.push({
           native: true,
+          formulaInstructions: instruction.includes('include the actual equation'),
           sourceRead: !!sourceResult,
           definitions,
           sourceInOpening: opening.includes('PDF p. 59') && opening.includes('ri(1)'),

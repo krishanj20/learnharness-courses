@@ -112,16 +112,6 @@
   border-radius: 0.5rem;
   background: transparent;
 }
-.book-courses .bc-message {
-  padding: 0.9rem 0;
-}
-.book-courses .bc-learner {
-  border-left: 2px solid #749580;
-  padding-left: 1rem;
-}
-.book-courses .bc-message strong:first-child {
-  font-size: 0.85rem;
-}
 .book-courses .bc-reader article {
   margin: 1.5rem 0 2rem;
 }
@@ -309,4 +299,300 @@
 .book-courses .bc-reading,
 .book-courses .bc-exam {
   scroll-margin-top: 4rem;
+}
+.book-courses .bc-navigation:has(.bc-jump) {
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding-block: 0.5rem;
+  border-bottom: 1px solid var(--bc-line);
+}
+.book-courses .bc-jump {
+  flex: 1 1 15rem;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+.book-courses .bc-jump select {
+  min-width: 0;
+  max-width: min(100%, 23rem);
+  flex: 0 1 auto;
+  font: inherit;
+  color: var(--foreground, CanvasText);
+  background: var(--card, Canvas);
+  border: 1px solid var(--bc-line);
+  border-radius: 0.45rem;
+  padding: 0.45rem;
+  min-height: 40px;
+}
+.book-courses .bc-jump select:focus-visible {
+  outline: 2px solid var(--bc-ink);
+}
+.book-courses .bc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 0.6rem;
+}
+.book-courses .bc-actions button {
+  margin: 0;
+  min-height: 40px;
+}
+.book-courses .bc-reading > .bc-actions {
+  margin-top: 0.9rem;
+}
+.book-courses .bc-options {
+  margin: 0.6rem 0 0;
+}
+.book-courses .bc-options > summary {
+  font-size: 0.88rem;
+  padding: 0.45rem 0;
+}
+.book-courses .bc-options[open] > .bc-actions {
+  margin: 0.3rem 0 0.5rem;
+}
+.book-courses .bc-lessons {
+  border: 1px solid var(--bc-line);
+  border-radius: 0.7rem;
+  margin: 0.65rem 0 1.4rem;
+}
+.book-courses .bc-lessons li:last-child {
+  border-bottom: 0;
+}
+.book-courses .bc-lessons li > details {
+  padding: 0;
+}
+.book-courses .bc-lessons .bc-topic {
+  display: grid;
+  grid-template-columns: 0.65rem minmax(0, 1fr) minmax(5.5rem, 23%);
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.85rem 1rem;
+}
+.book-courses .bc-topic::-webkit-details-marker {
+  display: none;
+}
+.book-courses .bc-topic::before {
+  content: '';
+  width: 0.46rem;
+  height: 0.46rem;
+  border-block-start: 2px solid;
+  border-inline-end: 2px solid;
+  transform: rotate(45deg);
+}
+.book-courses details[open] > .bc-topic::before {
+  transform: rotate(135deg);
+}
+.book-courses .bc-topic-name strong,
+.book-courses .bc-topic-name small {
+  display: block;
+}
+.book-courses .bc-topic-name small,
+.book-courses .bc-topic-progress small {
+  color: var(--muted-foreground, inherit);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.book-courses .bc-topic-progress {
+  display: grid;
+  gap: 0.2rem;
+  text-align: end;
+}
+.book-courses .bc-topic-progress progress {
+  width: 100%;
+  height: 0.45rem;
+  appearance: none;
+  border-radius: 1rem;
+  overflow: hidden;
+}
+.book-courses .bc-section-actions {
+  padding: 0.7rem 1rem;
+  border-top: 1px solid var(--bc-line);
+}
+.book-courses .bc-subpoint {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.4rem 1rem;
+  align-items: start;
+  padding: 0.8rem 1rem;
+  background: var(--card, Canvas);
+  border-top: 1px solid var(--bc-line);
+}
+.book-courses .bc-subpoint .bc-options {
+  margin: 0;
+}
+.book-courses .bc-exam {
+  border-block-start: 1px solid var(--bc-line);
+  padding-top: 0.65rem;
+}
+.book-courses .bc-jump > span {
+  white-space: nowrap;
+}
+.book-courses .bc-reading {
+  container-type: inline-size;
+}
+@container (max-width: 25rem) {
+  .book-courses .bc-reading > .bc-actions {
+    display: grid;
+  }
+  .book-courses .bc-reading > .bc-actions button {
+    width: 100%;
+  }
+}
+
+.book-courses > div:has(> nav .bc-jump) > h1 {
+  font-family: var(--font-title, Georgia, serif);
+  font-weight: 600;
+  text-wrap: balance;
+}
+.book-courses :is(.bc-reading, .bc-topic-name strong, .bc-subpoint, .bc-exam, .bc-actions) {
+  font-family: var(--font-prose, system-ui, sans-serif);
+}
+.book-courses .bc-reading > h2 {
+  margin-top: 0;
+  font-size: 1.4rem;
+}
+.book-courses .bc-actions button:not(.bc-primary) {
+  border-color: var(--bc-line);
+  background: transparent;
+}
+.book-courses .bc-actions button:hover {
+  background: var(--accent, Canvas);
+}
+.book-courses .bc-actions button.bc-primary:hover {
+  color: white;
+  background: #346451;
+}
+.book-courses .bc-thread {
+  display: grid;
+  gap: 1.1rem;
+  margin: 1.4rem 0;
+  min-width: 0;
+}
+.book-courses .bc-message {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  justify-self: start;
+  max-width: min(92%, 68ch);
+}
+.book-courses .bc-message.bc-learner {
+  justify-self: end;
+  max-width: min(84%, 60ch);
+}
+.book-courses .bc-speaker {
+  padding-inline: 0.15rem;
+  color: var(--muted-foreground, inherit);
+  font: 600 0.8rem/1.3 var(--font-prose, system-ui, sans-serif);
+}
+.book-courses .bc-learner .bc-speaker {
+  text-align: end;
+}
+.book-courses .bc-bubble {
+  min-width: 0;
+  padding: 0.75rem 1rem;
+  color: var(--foreground, CanvasText);
+  background: var(--card, Canvas);
+  border: 1px solid color-mix(in srgb, var(--bc-line) 70%, transparent);
+  border-radius: 0.22rem 0.85rem 0.85rem 0.85rem;
+  overflow-wrap: anywhere;
+  font: 400 1rem/1.55 var(--font-prose, system-ui, sans-serif);
+}
+.book-courses .bc-learner .bc-bubble {
+  border-color: color-mix(in srgb, #699583 38%, var(--bc-line));
+  background: color-mix(in srgb, #65937a 14%, var(--card, Canvas));
+  border-radius: 0.85rem 0.22rem 0.85rem 0.85rem;
+}
+.book-courses .bc-bubble :is(p, ul, ol) {
+  margin-block: 0.45em;
+}
+.book-courses .bc-bubble :is(p, ul, ol):first-child {
+  margin-top: 0;
+}
+.book-courses .bc-bubble :is(p, ul, ol):last-child {
+  margin-bottom: 0;
+}
+.book-courses .bc-bubble :is(pre, .katex-display) {
+  overflow-x: auto;
+}
+.book-courses .bc-lessons .bc-thread {
+  margin: 1rem;
+}
+body:has(> .bc-companion) {
+  padding-inline-end: min(39vw, 46rem);
+}
+.book-courses.bc-companion {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(39vw, 46rem);
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  margin: 0;
+  background: var(--background, Canvas);
+  border-inline-start: 1px solid var(--bc-line);
+  z-index: 10;
+}
+.bc-companion > header,
+.bc-companion > form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.bc-companion > header {
+  justify-content: space-between;
+}
+.bc-companion > header h2 {
+  font: 600 1.05rem/1.3 var(--font-prose, system-ui, sans-serif);
+  margin: 0;
+}
+.bc-companion > form {
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+}
+.bc-companion select {
+  font: inherit;
+  color: inherit;
+  background: var(--card, Canvas);
+  border: 1px solid var(--bc-line);
+  border-radius: 0.35rem;
+  padding: 0.3rem;
+}
+.bc-companion input {
+  width: 4rem;
+  color: inherit;
+  font: inherit;
+  border: 1px solid var(--bc-line);
+  border-radius: 0.3rem;
+  padding: 0.25rem;
+}
+.bc-companion-pages {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.bc-companion-pages .bc-reader article {
+  margin: 0 0 1rem;
+}
+.bc-companion-pages .bc-reader h2 {
+  font-size: 0.9rem;
+}
+@media (max-width: 850px) {
+  body:has(> .bc-companion) {
+    padding-inline-end: 0;
+  }
+  body:has(> .bc-companion) .h-dvh {
+    height: 55dvh;
+  }
+  .book-courses.bc-companion {
+    inset: auto 0 0;
+    width: 100%;
+    height: 45dvh;
+    border-top: 1px solid var(--bc-line);
+  }
 }

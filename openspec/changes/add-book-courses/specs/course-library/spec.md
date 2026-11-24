@@ -25,3 +25,11 @@ The plugin SHALL retain imported pages, saved conversations and progress across 
 #### Scenario: Reconnect
 - **WHEN** a model turn fails after the learner submits an answer
 - **THEN** the pending turn can be retried with the saved learner answer once and the tutor resumes at the saved step
+
+#### Scenario: Switch chapters while studying
+- **WHEN** a learner selects another chapter from within the current chapter or its reader
+- **THEN** the selected chapter opens regardless of prior completion and revisiting the original chapter restores its saved progress
+
+#### Scenario: Compare topic progress
+- **WHEN** the chapter topic list is visible
+- **THEN** every topic shows a bar and count of completed subparts using saved lesson progress, including when the topic is collapsed

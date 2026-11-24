@@ -1187,3 +1187,39 @@ test('finish a linked Teaching after correct selections without granting mastery
   assert.equal((await h.call('course')).chapters[0].lessonsDone, 1);
   await assert.rejects(h.call('teaching-finish', { sessionId: 'unrelated' }), /linked/);
 });
+
+test('book beside an existing Teaching opens its latest visible in-range PDF citation', async (t) => {
+  const book = chapter(solo);
+  book.end = 2;
+  book.sections[0].end = 2;
+  const sessions = [];
+  const h = host(t, [book], sessions);
+  h.reply((i) => plan(i));
+  await h.call('prepare');
+  const key = '1.1',
+    sessionId = 'saved-lesson';
+  const pending = await h.call('teaching-start', { key });
+  const messages = [];
+  sessions.push({ id: sessionId, title: pending.provisional, messages });
+  await h.call('teaching-bind', { key, sessionId });
+  h.restart();
+  assert.equal((await h.call('teaching-book', { sessionId })).page, 1);
+  messages.push({
+    role: 'assistant',
+    content: [
+      { type: 'toolCall', name: 'send_to_user', arguments: { message: 'The relation is on PDF p. 2.' } },
+    ],
+  });
+  messages.push(
+    { role: 'user', content: 'PDF p. 1' },
+    {
+      role: 'assistant',
+      content: [
+        { type: 'thinking', text: 'PDF p. 1' },
+        { type: 'text', text: 'Another chapter uses PDF p. 30.' },
+      ],
+    },
+  );
+  assert.equal((await h.call('teaching-book', { sessionId })).page, 2);
+  await assert.rejects(h.call('teaching-book', { sessionId: 'different' }), /linked/);
+});
