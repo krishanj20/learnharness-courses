@@ -179,6 +179,68 @@ export async function runCourseChecks({
     );
     return;
   }
+  if (process.argv.includes('--lesson-actions')) {
+    const chapter = course.chapters[1];
+    const row = '.bc-subpoint[aria-label="Definitions"]';
+    const rowButton = async (label) => {
+      const button = await page().waitForFunction(
+        (selector, text) =>
+          [...document.querySelectorAll(selector + ' button')].find(
+            (b) => !b.disabled && b.textContent === text && !b.closest('[aria-busy="true"]'),
+          ),
+        {},
+        row,
+        label,
+      );
+      await button.asElement().click();
+      await button.dispose();
+    };
+    await click('2. ' + chapter.title);
+    await page().waitForSelector(row);
+    for (const width of [680, 1280]) {
+      await page().setViewport({ width, height: 900 });
+      const rows = await page().$$eval('.bc-subpoint', (rows) =>
+        rows.map((row) =>
+          [...row.querySelectorAll('button')]
+            .filter((b) => b.checkVisibility() && !b.closest('details'))
+            .map((b) => b.textContent),
+        ),
+      );
+      assert.equal(rows.length, chapter.sections.flatMap((s) => s.readings).length);
+      assert.ok(
+        rows.every(
+          (labels) => labels.includes('Start Teaching') && labels.includes('Make available offline'),
+        ),
+      );
+      assert.ok(await page().$eval('.bc-lessons', (e) => e.scrollWidth <= e.clientWidth + 1));
+    }
+    await rowButton('Start Teaching');
+    await page().waitForSelector('canvas[aria-label="Original PDF page 57"]');
+    await click('I’ve read Definitions · Start Teaching');
+    await see('On PDF p. 59', '[data-testid="question-dock"]');
+    const teaching = page().url();
+    await click('Courses');
+    await see('Resume Teaching', row);
+    await rowButton('Mark lesson complete');
+    await see('Definitions · Completed', row);
+    await see('Review Teaching', row);
+    assert.ok(!(await page().$eval(row, (e) => e.innerText)).includes('Resume Teaching'));
+    await rowButton('Review Teaching');
+    await see('On PDF p. 59', '[data-testid="question-dock"]');
+    assert.equal(page().url(), teaching);
+    await click('Courses');
+    await see('Review Teaching', row);
+    await rowButton('Make available offline');
+    await see('Ready offline', '.book-courses');
+    await click('Back to chapter');
+    await see('Open offline lesson', row);
+    await rowButton('Open offline lesson');
+    await see('Ready offline', '.book-courses');
+    await observe(
+      'All 14 Chapter 2 lessons exposed both actions at two window widths. Definitions opened at PDF page 57, changed from Resume to Review on completion, reopened the same chat, and prepared and reopened its offline copy directly.',
+    );
+    return;
+  }
   if (process.argv.includes('--chapter-ui')) {
     const addr = { id, chapter: 1, key: course.chapters[1].sections[0].readings[0].key };
     await call('prepare', addr);
@@ -219,12 +281,12 @@ export async function runCourseChecks({
     await observe(
       'Selected the final unprepared chapter, returned to the original chapter from its PDF reader, and verified every topic bar and the saved conversation.',
     );
-    await page().click('.bc-lessons .bc-topic');
-    await see('Completed offline', '.bc-lessons details[open]');
-    const read = await page().waitForSelector('.bc-subpoint button');
-    await read.click();
+    await see('Completed offline', '.bc-subpoint');
+    await page().$eval('.bc-subpoint', (row) =>
+      [...row.querySelectorAll('button')].find((b) => b.textContent === 'Read pages').click(),
+    );
     await page().waitForSelector('.bc-reader canvas');
-    await observe('Expanded a topic and opened a subpart reading from its row.');
+    await observe('Opened a subpart reading directly from its row.');
     await click('Back to lesson');
     await call('turn', { ...addr, action: 'read' });
     await call('turn', {
@@ -257,9 +319,7 @@ export async function runCourseChecks({
   if (process.argv.includes('--jump-section')) {
     await click('2. ' + course.chapters[1].title);
     await see('0 of 4 sections complete', '.book-courses');
-    const section = await page().waitForSelector('.bc-lessons li:nth-child(2) summary');
-    await section.click();
-    await page().$eval('.bc-lessons li:nth-child(2) details', (el) =>
+    await page().$eval('.bc-lessons li:nth-child(2)', (el) =>
       [...el.querySelectorAll('button')].find((b) => b.textContent === 'Study this section').click(),
     );
     await page().waitForSelector('canvas[aria-label="Original PDF page 69"]');
@@ -481,8 +541,7 @@ export async function runCourseChecks({
   );
   await click('Courses');
   await see('1 of 14 chapter subpoints demonstrated', '.bc-status');
-  await page().$eval('.bc-lessons summary', (el) => el.click());
-  await see('Definitions · Demonstrated', '.bc-lessons details[open]');
+  await see('Definitions · Demonstrated', '.bc-subpoint');
   await see('Stop at “Log Returns”.', '.bc-reading');
   await click('I’ve read it · Start Teaching');
   await page().waitForFunction(

@@ -666,17 +666,22 @@ export function activate(ctx) {
               ),
         );
       }
-      function startButton(ch, section, point, wholeSection = false, compact = false) {
-        const session = ch.teaching?.[point.key]?.sessionId;
-        const read = chat.readSection === section || chat.readSections?.[section];
-        let label;
-        if (session) label = compact ? 'Resume Teaching' : 'Resume Teaching · ' + point.title;
-        else if (read) label = compact ? 'Start Teaching' : 'Start Teaching · ' + point.title;
-        else if (compact) label = 'I’ve read it · Start Teaching';
-        else if (wholeSection || ch.sections[section].readings.length === 1)
-          label = 'I’ve read this section · Start Teaching';
-        else label = 'I’ve read ' + point.title + ' · Start Teaching';
-        return button(label, () => launchPoint(point, wholeSection), true);
+      function startButton(ch, section, point, place, wholeSection = false) {
+        const unit = ch.sections[section];
+        const entry = ch.teaching?.[point.key];
+        if (entry?.sessionId && (unit.done || pointFinished(entry, ch.offlineLessons?.[point.key])))
+          return button('Review Teaching', () => ctx.app.openSession(entry.sessionId), true);
+
+        const launch = () => launchPoint(point, wholeSection);
+        if (entry?.sessionId) return button('Resume Teaching', launch, true);
+        if (chat.readSection === section || chat.readSections?.[section])
+          return button('Start Teaching', launch, true);
+        if (place === 'lesson')
+          return button('Start Teaching', () => openReader(point.start, point.end, section, point), true);
+
+        const reading =
+          place === 'card' ? 'it' : wholeSection || unit.readings.length === 1 ? 'this section' : point.title;
+        return button('I’ve read ' + reading + ' · Start Teaching', launch, true);
       }
       function options(label, ...buttons) {
         const detail = el('details', null, 'bc-options');
@@ -712,15 +717,13 @@ export function activate(ctx) {
           () => openReader(point.start, point.end, section, point),
           !entry?.sessionId,
         );
-        const teach = startButton(ch, section, point, false, true);
+        const teach = startButton(ch, section, point, 'card');
         teach.classList.toggle('bc-primary', Boolean(entry?.sessionId));
-        actions.append(open, teach);
+        actions.append(open, teach, offlineButton(point));
         box.append(actions);
         const extras = [];
         if (s.readings.length > 1)
           extras.push(button('Read whole section', () => openReader(s.start, s.end, section, point, true)));
-        if (ch.offlineLessons?.[point.key]) actions.append(offlineButton(point));
-        else extras.push(offlineButton(point));
         if (entry?.sessionId)
           extras.push(
             button('Check teaching progress', async () => {
@@ -766,7 +769,7 @@ export function activate(ctx) {
                 (stop ? ' · Stop at “' + stop + '”.' : ''),
             ),
           );
-          body.querySelector('nav').append(startButton(ch, lessonIndex, point, wholeSection));
+          body.querySelector('nav').append(startButton(ch, lessonIndex, point, 'reader', wholeSection));
         }
         closeReader = await scrollReader(body, doc, labels, start, end);
         if (signal.aborted) closeReader();
@@ -1067,14 +1070,13 @@ export function activate(ctx) {
         const lessons = el('ol', null, 'bc-lessons');
         for (const [i, unit] of ch.sections.entries()) {
           const row = el('li');
-          const detail = el('details');
           const label = (unit.number ? '§' + unit.number + ' · ' : '') + unit.title;
           const status = unit.done ? 'Done' : i === activeSection ? 'Current lesson' : 'Available';
           const total = unit.readings.length;
           const count = unit.completedPoints;
-          const summary = el('summary', null, 'bc-topic');
-          const name = el('span', null, 'bc-topic-name');
-          name.append(el('strong', label), el('small', status));
+          const header = el('div', null, 'bc-topic');
+          const name = el('div', null, 'bc-topic-name');
+          name.append(el('h3', label), el('small', status));
           const meter = el('progress');
           meter.max = total;
           meter.value = count;
@@ -1082,9 +1084,8 @@ export function activate(ctx) {
           meter.setAttribute('aria-valuetext', count + ' of ' + total + ' subparts complete');
           const progress = el('span', null, 'bc-topic-progress');
           progress.append(meter, el('small', count + ' / ' + total));
-          summary.append(name, progress);
-          detail.append(summary);
-          detail.open = i === reviewLesson;
+          header.append(name, progress);
+          row.append(header);
           const target = nextPoint(ch, i);
           const sectionButtons = el('div', null, 'bc-actions bc-section-actions');
           if (unit.readings.length > 1)
@@ -1099,11 +1100,13 @@ export function activate(ctx) {
             readSection.textContent + ' · ' + label + ' · ' + span(unit),
           );
           sectionButtons.append(readSection);
-          detail.append(sectionButtons);
+          row.append(sectionButtons);
           for (const p of unit.readings) {
             const entry = ch.teaching?.[p.key];
             const offline = ch.offlineLessons?.[p.key];
             const line = el('div', null, 'bc-subpoint');
+            line.setAttribute('role', 'group');
+            line.setAttribute('aria-label', p.title);
             const info = el('div');
             const result = entry?.done
               ? 'Demonstrated'
@@ -1119,26 +1122,28 @@ export function activate(ctx) {
             if (unit.readings.length > 1) info.append(el('small', span(p)));
             line.append(info);
             const actions = el('div', null, 'bc-actions');
+            const teach = startButton(ch, i, p, 'lesson');
+            teach.classList.remove('bc-primary');
+            actions.append(teach, offlineButton(p));
             if (unit.readings.length > 1)
               actions.append(button('Read pages', () => openReader(p.start, p.end, i, p)));
-            const teach = startButton(ch, i, p);
-            teach.classList.remove('bc-primary');
-            const extras = [offlineButton(p)];
-            if (entry?.sessionId || unit.readings.length === 1) actions.append(teach);
-            else extras.unshift(teach);
-            if (entry?.sessionId && !pointFinished(entry, offline))
-              extras.push(
+            if (entry?.sessionId && !result)
+              actions.append(
                 button('Mark lesson complete', () =>
                   act('teaching-finish', { sessionId: entry.sessionId }, 'Saving completion…'),
                 ),
               );
-            actions.append(options('Lesson options', ...extras));
             line.append(actions);
-            detail.append(line);
+            row.append(line);
           }
           const range = chat.lessonRanges?.[i];
-          if (range) messages(detail, chat.messages.slice(range.start, range.end));
-          row.append(detail);
+          if (range && range.end > range.start) {
+            const history = el('details');
+            history.append(el('summary', 'Lesson conversation'));
+            messages(history, chat.messages.slice(range.start, range.end));
+            history.open = i === reviewLesson;
+            row.append(history);
+          }
           lessons.append(row);
         }
         body.append(lessons);

@@ -101,3 +101,9 @@ When a course tutor uses an equation in a question, the question SHALL supply th
 - **WHEN** a learner activates a physical PDF page reference in a saved or newly rendered course Teaching
 - **THEN** the book opens beside the same conversation at that page, or the existing reader scrolls there
 - **AND** a page range opens at its first page and the learner’s answer draft is preserved
+
+#### Scenario: Choose a lesson directly from a chapter
+- **WHEN** the learner opens a chapter
+- **THEN** every lesson row shows its Teaching and offline actions without expanding a topic or action menu
+- **AND** the Teaching action starts a new lesson, resumes an unfinished chat, or opens a completed lesson’s saved Teaching for review
+- **AND** the offline action prepares that lesson or opens the copy already saved

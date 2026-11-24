@@ -2,7 +2,7 @@
   "apiVersion": 1,
   "id": "book-courses",
   "name": "Courses",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "minAppVersion": "0.6.1",
   "description": "Read your book section by section with a Socratic tutor and chapter exams.",
   "main": "main.js",
