@@ -142,6 +142,37 @@ export async function runCourseChecks({
     );
     return;
   }
+  if (process.argv.includes('--exam-pages')) {
+    for (const [number, expected] of [
+      [1, []],
+      [2, [99]],
+      [8, [286, 287, 288, 289, 290]],
+      [10, [355, 361]],
+    ]) {
+      await click(number + '. ' + course.chapters[number - 1].title);
+      await page().waitForSelector('.bc-exam');
+      const links = await page().$$eval('.bc-exam button', (buttons) => buttons.map((b) => b.textContent));
+      assert.deepEqual(links, expected.length ? ['View exercise pages'] : []);
+      if (expected.length) {
+        await click('View exercise pages');
+        await page().waitForSelector('.bc-reader canvas');
+        assert.deepEqual(
+          await page().$$eval('.bc-reader [data-page]', (nodes) => nodes.map((n) => Number(n.dataset.page))),
+          expected,
+        );
+        const last = expected.at(-1);
+        await page().$eval('[data-page="' + last + '"]', (n) => n.scrollIntoView({ block: 'center' }));
+        await page().waitForSelector('canvas[aria-label="Original PDF page ' + last + '"]');
+        await click('Back to exam');
+        await page().waitForSelector('.bc-exam');
+      }
+      await click('Back to chapters');
+    }
+    await observe(
+      'Exam preview handled absent, shared, overlapping and separated exercise pages in EQI Chapters 1, 2, 8 and 10. Each preview showed exactly the original exercise pages in book order.',
+    );
+    return;
+  }
   if (process.argv.includes('--exam-sequence')) {
     const addr = await examReady(1);
     const chapterName = '2. ' + course.chapters[1].title;
@@ -503,7 +534,7 @@ export async function runCourseChecks({
   await see('0 of 4 sections complete', '.book-courses');
   await see('Available after all 4 lessons are done.', '.bc-exam');
   await see('Book exercises: 2.1, 2.2, 2.3, 2.5.', '.bc-exam');
-  await click('View book questions · PDF p. 99');
+  await click('View exercise pages');
   await page().waitForSelector('canvas[aria-label="Original PDF page 99"]');
   await click('Back to exam');
   assert.equal((await call('chat', { id, chapter: 1 })).phase, 'reading');

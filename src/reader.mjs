@@ -1,7 +1,11 @@
+export function pageRange(start, end = start) {
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+}
+
 // Reserve space for every assigned page so ordinary scrolling works before
 // rendering finishes. Only nearby pages need a full-resolution bitmap.
-export async function scrollReader(parent, doc, labels, start, end, viewportRoot = null) {
-  const first = await doc.getPage(start);
+export async function scrollReader(parent, doc, labels, pages, viewportRoot = null) {
+  const first = await doc.getPage(pages[0]);
   const size = first.getViewport({ scale: 1 });
   const reader = document.createElement('section');
   reader.className = 'bc-reader';
@@ -45,7 +49,7 @@ export async function scrollReader(parent, doc, labels, start, end, viewportRoot
     }
   }
 
-  for (let number = start; number <= end; number++) {
+  for (const number of pages) {
     const page = document.createElement('article');
     const title = document.createElement('h2');
     title.textContent = 'Printed p. ' + (labels?.[number - 1] ?? number) + ' · PDF p. ' + number;

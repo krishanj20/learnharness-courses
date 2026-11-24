@@ -69,3 +69,8 @@ After the lessons, Courses SHALL let the learner open an eligible book exercise 
 - **THEN** the current exercise opens with its own conversation and one task to answer
 - **AND** for a multipart book exercise the tutor presents each outstanding part in turn, with the full exercise available for reference
 - **AND** completing an exercise offers the next question or the chapter results
+
+#### Scenario: Preview the original exercise pages
+- **WHEN** a chapter includes exercises from the book
+- **THEN** the exam overview offers one preview that shows each exercise page once, in book order, skipping intervening pages
+- **AND** the source action inside an individual question opens only that question’s pages

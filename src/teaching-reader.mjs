@@ -1,6 +1,6 @@
 import { watchTeachingCitations } from './teaching-citations.mjs';
 import { openPdf } from './pdf.mjs';
-import { scrollReader } from './reader.mjs';
+import { pageRange, scrollReader } from './reader.mjs';
 
 export async function loadBookPdf(ctx, id, signal) {
   let bytes,
@@ -85,7 +85,7 @@ export function registerBookReader(ctx) {
       const doc = await task.promise;
       const labels = await doc.getPageLabels();
       scope.signal.throwIfAborted();
-      const cleanup = await scrollReader(scroll, doc, labels, 1, doc.numPages, scroll);
+      const cleanup = await scrollReader(scroll, doc, labels, pageRange(1, doc.numPages), scroll);
       if (scope.signal.aborted) {
         cleanup();
         return;

@@ -6,7 +6,7 @@ import { GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import worker from 'bundled-pdf-worker';
 import { openPdf, extractBook } from './pdf.mjs';
 import { registerBookReader, loadBookPdf } from './teaching-reader.mjs';
-import { scrollReader } from './reader.mjs';
+import { pageRange, scrollReader } from './reader.mjs';
 
 const el = (tag, text, cls) => {
   const n = document.createElement(tag);
@@ -625,7 +625,7 @@ export function activate(ctx) {
         if (point.stop) body.append(el('p', 'Stop at “' + point.stop + '”.'));
         body.append(
           button('Open assigned pages', () =>
-            openReader(point.start, point.end, null, null, false, () => offlineView(point)),
+            openReader(pageRange(point.start, point.end), null, null, false, () => offlineView(point)),
           ),
         );
         if (!summary.read) {
@@ -677,7 +677,11 @@ export function activate(ctx) {
         if (chat.readSection === section || chat.readSections?.[section])
           return button('Start Teaching', launch, true);
         if (place === 'lesson')
-          return button('Start Teaching', () => openReader(point.start, point.end, section, point), true);
+          return button(
+            'Start Teaching',
+            () => openReader(pageRange(point.start, point.end), section, point),
+            true,
+          );
 
         const reading =
           place === 'card' ? 'it' : wholeSection || unit.readings.length === 1 ? 'this section' : point.title;
@@ -714,7 +718,7 @@ export function activate(ctx) {
         const entry = ch.teaching?.[point.key];
         const open = button(
           'Open assigned pages',
-          () => openReader(point.start, point.end, section, point),
+          () => openReader(pageRange(point.start, point.end), section, point),
           !entry?.sessionId,
         );
         const teach = startButton(ch, section, point, 'card');
@@ -723,7 +727,9 @@ export function activate(ctx) {
         box.append(actions);
         const extras = [];
         if (s.readings.length > 1)
-          extras.push(button('Read whole section', () => openReader(s.start, s.end, section, point, true)));
+          extras.push(
+            button('Read whole section', () => openReader(pageRange(s.start, s.end), section, point, true)),
+          );
         if (entry?.sessionId)
           extras.push(
             button('Check teaching progress', async () => {
@@ -735,14 +741,7 @@ export function activate(ctx) {
         if (extras.length) box.append(options('Reading options', ...extras));
         body.append(box);
       }
-      async function openReader(
-        start,
-        end,
-        lessonIndex = null,
-        point = null,
-        wholeSection = false,
-        back = null,
-      ) {
+      async function openReader(pages, lessonIndex = null, point = null, wholeSection = false, back = null) {
         const doc = await pdf();
         const labels = await doc.getPageLabels();
         reset();
@@ -771,7 +770,7 @@ export function activate(ctx) {
           );
           body.querySelector('nav').append(startButton(ch, lessonIndex, point, 'reader', wholeSection));
         }
-        closeReader = await scrollReader(body, doc, labels, start, end);
+        closeReader = await scrollReader(body, doc, labels, pages);
         if (signal.aborted) closeReader();
       }
       async function turn(action, text) {
@@ -833,7 +832,7 @@ export function activate(ctx) {
               q.answerOrigin +
               (q.hintOrigin ? ' · ' + q.hintOrigin : ''),
           ),
-          button('View source page', () => openReader(q.page, q.endPage ?? q.page, 'exam')),
+          button('View source page', () => openReader(pageRange(q.page, q.endPage ?? q.page), 'exam')),
         );
         if (q.messages[0]?.text !== q.question) {
           const original = el('details');
@@ -937,20 +936,20 @@ export function activate(ctx) {
           }
         }
         for (const reason of chat.exam?.ungraded ?? []) panel.append(el('p', reason));
-        const ranges = new Map();
+        const pages = new Set();
         for (const e of exercises) {
-          const end = e.endPage ?? e.page;
-          ranges.set(e.page + '–' + end, { start: e.page, end });
+          for (const page of pageRange(e.page, e.endPage ?? e.page)) pages.add(page);
           if (e.blocked) panel.append(el('p', 'Exercise ' + e.id + ' · Excluded from grading: ' + e.blocked));
         }
-        for (const { start, end } of ranges.values()) {
+        if (pages.size)
           panel.append(
-            button(
-              'View book questions · PDF ' + (start === end ? 'p. ' + start : 'pp. ' + start + '–' + end),
-              () => openReader(start, end, 'exam'),
+            button('View exercise pages', () =>
+              openReader(
+                [...pages].sort((a, b) => a - b),
+                'exam',
+              ),
             ),
           );
-        }
         body.append(panel);
       }
       function practiceSuggestion(offer, item = null) {
@@ -1090,10 +1089,10 @@ export function activate(ctx) {
           const sectionButtons = el('div', null, 'bc-actions bc-section-actions');
           if (unit.readings.length > 1)
             sectionButtons.append(
-              button('Study this section', () => openReader(target.start, target.end, i, target)),
+              button('Study this section', () => openReader(pageRange(target.start, target.end), i, target)),
             );
           const readSection = button(unit.readings.length > 1 ? 'Read whole section' : 'Read pages', () =>
-            openReader(unit.start, unit.end, i, nextPoint(ch, i), true),
+            openReader(pageRange(unit.start, unit.end), i, nextPoint(ch, i), true),
           );
           readSection.setAttribute(
             'aria-label',
@@ -1126,7 +1125,7 @@ export function activate(ctx) {
             teach.classList.remove('bc-primary');
             actions.append(teach, offlineButton(p));
             if (unit.readings.length > 1)
-              actions.append(button('Read pages', () => openReader(p.start, p.end, i, p)));
+              actions.append(button('Read pages', () => openReader(pageRange(p.start, p.end), i, p)));
             if (entry?.sessionId && !result)
               actions.append(
                 button('Mark lesson complete', () =>
@@ -1150,7 +1149,7 @@ export function activate(ctx) {
         examOverview(ch, studying);
         const tools = [
           button('Open whole chapter · PDF pp. ' + ch.start + '–' + ch.end, () =>
-            openReader(ch.start, ch.end),
+            openReader(pageRange(ch.start, ch.end)),
           ),
         ];
         if (Object.values(ch.teaching ?? {}).some((entry) => entry.sessionId))
