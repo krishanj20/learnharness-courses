@@ -104,6 +104,11 @@ When a course tutor uses an equation in a question, the question SHALL supply th
 
 #### Scenario: Choose a lesson directly from a chapter
 - **WHEN** the learner opens a chapter
-- **THEN** every lesson row shows its Teaching and offline actions without expanding a topic or action menu
+- **THEN** every lesson row shows its Teaching action and, when Offline plans is active, its offline action without expanding a topic or action menu
 - **AND** the Teaching action starts a new lesson, resumes an unfinished chat, or opens a completed lesson’s saved Teaching for review
 - **AND** the offline action prepares that lesson or opens the copy already saved
+
+#### Scenario: Change availability of the Offline plans plugin
+- **WHEN** Offline plans is missing or disabled
+- **THEN** Courses hides offline lesson actions in the chapter and Teaching, while retaining saved lessons and completion credit
+- **AND** enabling Offline plans restores the applicable prepare or open actions

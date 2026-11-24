@@ -1,3 +1,4 @@
+import { watchOfflinePlans } from './offline-availability.mjs';
 import { pointFinished } from './passages.mjs';
 import { bookQuestions } from './exam-threads.mjs';
 import { courseGraph } from './course-graph.mjs';
@@ -56,28 +57,45 @@ export function activate(ctx) {
     },
   });
   ctx.placeAction({ id: 'courses', actionId: 'open-courses', location: 'sidebar' });
-  ctx.registerAction({
-    id: 'offline-course-lesson',
-    name: 'Offline course lesson',
-    disabled: ({ view }) =>
-      !view ||
-      view.busy ||
-      !view.transcript.some(
-        (m) =>
-          m.role === 'user' && m.parts.some((p) => p.type === 'text' && p.text.includes('course_reading')),
-      ),
-    async run({ sessionId }) {
-      const address = await ctx.call('teaching-location', { sessionId });
-      if (!address) throw Error('Open a Teaching linked to a book lesson.');
-      returning = { ...address, offline: true };
-      ctx.app.openView('library');
-    },
-  });
-  ctx.placeAction({
-    id: 'offline-course-lesson',
-    actionId: 'offline-course-lesson',
-    location: 'top-bar',
-    sessions: ['teaching'],
+  let offlineEnabled = false,
+    removeOfflineAction;
+  const availability = new EventTarget();
+  function registerOfflineAction() {
+    const removeAction = ctx.registerAction({
+      id: 'offline-course-lesson',
+      name: 'Offline course lesson',
+      disabled: ({ view }) =>
+        !view ||
+        view.busy ||
+        !view.transcript.some(
+          (m) =>
+            m.role === 'user' && m.parts.some((p) => p.type === 'text' && p.text.includes('course_reading')),
+        ),
+      async run({ sessionId }) {
+        const address = await ctx.call('teaching-location', { sessionId });
+        if (!offlineEnabled) return;
+        if (!address) throw Error('Open a Teaching linked to a book lesson.');
+        returning = { ...address, offline: true };
+        ctx.app.openView('library');
+      },
+    });
+    const removePlacement = ctx.placeAction({
+      id: 'offline-course-lesson',
+      actionId: 'offline-course-lesson',
+      location: 'top-bar',
+      sessions: ['teaching'],
+    });
+    return () => {
+      removePlacement();
+      removeAction();
+    };
+  }
+  watchOfflinePlans(ctx, (enabled) => {
+    if (offlineEnabled === enabled) return;
+    offlineEnabled = enabled;
+    if (enabled) removeOfflineAction = registerOfflineAction();
+    else removeOfflineAction();
+    availability.dispatchEvent(new Event('change'));
   });
   ctx.registerView({
     id: 'library',
@@ -95,12 +113,15 @@ export function activate(ctx) {
         questionId = null,
         docTask,
         docBook,
+        offlineScreen = false,
         locked = false,
         widgets = [],
         closeReader,
         rawBook,
         openPlan = false;
+      const offlineSlots = [];
       const dispose = () => {
+        offlineSlots.length = 0;
         widgets.splice(0).forEach((w) => w.dispose());
         closeReader?.();
         closeReader = null;
@@ -112,6 +133,7 @@ export function activate(ctx) {
         rawBook = null;
       };
       const reset = () => {
+        offlineScreen = false;
         dispose();
         body.replaceChildren();
       };
@@ -124,6 +146,26 @@ export function activate(ctx) {
         parent.append(box);
         widgets.push(ctx.ui.mountMarkdown(box, { text }, { signal }));
       }
+      function offlineOnly(node) {
+        const anchor = document.createComment('offline-plans');
+        const update = () => {
+          if (offlineEnabled && !node.parentNode) anchor.after(node);
+          else if (!offlineEnabled) node.remove();
+        };
+        offlineSlots.push(update);
+        const fragment = document.createDocumentFragment();
+        fragment.append(anchor);
+        update();
+        return fragment;
+      }
+      availability.addEventListener(
+        'change',
+        () => {
+          offlineSlots.forEach((update) => update());
+          if (!locked && !offlineEnabled && offlineScreen) paintChat();
+        },
+        { signal },
+      );
       async function run(fn) {
         if (locked || signal.aborted) return;
         locked = true;
@@ -142,6 +184,7 @@ export function activate(ctx) {
           }
         } finally {
           locked = false;
+          if (!signal.aborted && !offlineEnabled && offlineScreen) paintChat();
           root.removeAttribute('aria-busy');
         }
       }
@@ -588,14 +631,18 @@ export function activate(ctx) {
       }
       function offlineButton(point) {
         const ready = course.chapters[index].offlineLessons?.[point.key];
-        return button(ready ? 'Open offline lesson' : 'Make available offline', () => openOffline(point));
+        return offlineOnly(
+          button(ready ? 'Open offline lesson' : 'Make available offline', () => openOffline(point)),
+        );
       }
       async function openOffline(point) {
+        if (!offlineEnabled) return;
         if (!course.chapters[index].offlineLessons?.[point.key]) {
           if (!course.chapters[index].objectives) {
             await prepare(index);
             chat = await call('chat', { id: course.id, chapter: index });
           }
+          if (!offlineEnabled) return loadChat();
           show('Preparing ' + point.title + ' for offline study…');
           await call('offline-prepare', {
             ...args(),
@@ -608,6 +655,7 @@ export function activate(ctx) {
         show('');
       }
       async function offlineView(point) {
+        if (!offlineEnabled) return loadChat();
         const ch = course.chapters[index],
           summary = ch.offlineLessons[point.key];
         const address = () => ({ ...args(), key: point.key });
@@ -617,6 +665,7 @@ export function activate(ctx) {
           await offlineView(point);
         };
         reset();
+        offlineScreen = true;
         navigation(button('Back to chapter', loadChat), backToChapters());
         heading('h1', point.title);
         body.append(
@@ -744,7 +793,9 @@ export function activate(ctx) {
       async function openReader(pages, lessonIndex = null, point = null, wholeSection = false, back = null) {
         const doc = await pdf();
         const labels = await doc.getPageLabels();
+        if (back && !offlineEnabled) return loadChat();
         reset();
+        offlineScreen = Boolean(back);
         navigation(
           button(
             back
@@ -1111,12 +1162,13 @@ export function activate(ctx) {
               ? 'Demonstrated'
               : entry?.completed
                 ? 'Completed'
-                : offline?.finished
-                  ? 'Completed offline'
-                  : unit.done
-                    ? 'Completed'
-                    : '';
-            info.append(el('strong', p.title + (result ? ' · ' + result : '')));
+                : offline?.finished || unit.done
+                  ? 'Completed'
+                  : '';
+            const title = el('strong', p.title + (result ? ' · ' + result : ''));
+            if (offline?.finished && !entry?.completed && !entry?.done)
+              title.append(offlineOnly(el('span', ' offline')));
+            info.append(title);
             if (entry?.done) info.append(el('small', entry.done.reason));
             if (unit.readings.length > 1) info.append(el('small', span(p)));
             line.append(info);
@@ -1223,7 +1275,7 @@ export function activate(ctx) {
         course = await call('course', { id: destination.id });
         index = destination.chapter;
         await loadChat();
-        if (destination.offline) {
+        if (destination.offline && offlineEnabled) {
           const point = course.chapters[index].sections
             .flatMap((s) => s.readings)
             .find((p) => p.key === destination.key);

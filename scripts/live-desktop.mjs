@@ -212,7 +212,7 @@ async function enableAndCheckHost() {
     await api('/api/plugins/' + id, 'PUT', { enabled: true });
   }
   await page.reload({ waitUntil: 'domcontentloaded' });
-  if (syntheticOnly) return;
+  if (syntheticOnly || process.argv.includes('--offline-availability')) return;
   await see('Test practice');
   for (const kind of ['teach', 'practice', 'all']) {
     const filter = await page.waitForSelector('[data-testid="kind-filter-' + kind + '"]');

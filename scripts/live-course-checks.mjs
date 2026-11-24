@@ -66,6 +66,88 @@ export async function runCourseChecks({
   await observe(
     '496-page file selected through Create course and stored byte-for-byte, with 14 chapters and Chapter 10 exercises on 355 and 361',
   );
+  if (process.argv.includes('--offline-availability')) {
+    const addr = { id, chapter: 1, key: course.chapters[1].sections[0].readings[0].key };
+    const chapterName = '2. ' + course.chapters[1].title;
+    const row = '.bc-subpoint[aria-label="Definitions"]';
+    const toggle = (enabled) => api('/api/plugins/offline-plans', 'PUT', { enabled });
+    const openChapter = async () => {
+      await click('Courses');
+      await click(title);
+      await click(chapterName);
+      await page().waitForSelector(row);
+    };
+    const noOfflineButtons = () =>
+      page().waitForFunction(
+        () =>
+          !!document.querySelector('.bc-reading') &&
+          ![...document.querySelectorAll('.book-courses button')].some((b) => /offline/i.test(b.textContent)),
+      );
+    await click(chapterName);
+    await see('Make available offline', row);
+    await click('Make available offline');
+    await see('Ready offline', '.book-courses');
+    await toggle(false);
+    await noOfflineButtons();
+    await see('Start Teaching', row);
+    await toggle(true);
+    await see('Open offline lesson', row);
+    await click('Open offline lesson');
+    await see('Ready offline', '.book-courses');
+    await click('Back to chapter');
+    await call('offline-read', addr);
+    for (const check of [0, 1]) await call('offline-answer', { ...addr, check, choice: 1 });
+    await call('offline-finish', addr);
+    await click('Back to chapters');
+    await click(chapterName);
+    await see('Completed offline', row);
+    await toggle(false);
+    await noOfflineButtons();
+    assert.equal(await page().$eval(row + ' strong', (el) => el.textContent), 'Definitions · Completed');
+    const saved = await call('chat', addr);
+    await stop();
+    const plugin = path.join(data, 'plugins/offline-plans');
+    await rename(plugin, path.join(scratch, 'removed-offline-plans'));
+    await launch();
+    assert.ok(!(await api('/api/plugins')).plugins.some((p) => p.id === 'offline-plans'));
+    await openChapter();
+    await noOfflineButtons();
+    assert.equal(await page().$eval(row + ' strong', (el) => el.textContent), 'Definitions · Completed');
+    assert.equal((await call('chat', addr)).rev, saved.rev);
+    await page().$eval(row, (el) =>
+      [...el.querySelectorAll('button')].find((b) => b.textContent === 'Start Teaching').click(),
+    );
+    await click('I’ve read Definitions · Start Teaching');
+    await see('On PDF p. 59', '[data-testid="question-dock"]');
+    const menu = 'button[aria-label="More plugin actions"][aria-expanded="false"]';
+    if (await page().$(menu)) await page().click(menu);
+    assert.equal(
+      await page().evaluate(() =>
+        [...document.querySelectorAll('button,[role="menuitem"]')].some(
+          (el) => el.textContent.trim() === 'Offline course lesson',
+        ),
+      ),
+      false,
+    );
+    await stop();
+    await rename(path.join(scratch, 'removed-offline-plans'), plugin);
+    await launch();
+    await toggle(true);
+    await openChapter();
+    await see('Completed offline', row);
+    await see('Open offline lesson', row);
+    await click('Open offline lesson');
+    await see('Completed offline', '.book-courses');
+    await click('Back to chapter');
+    await click('Review Teaching');
+    await see('On PDF p. 59', '[data-testid="question-dock"]');
+    await click('Offline course lesson');
+    await see('Completed offline', '.book-courses');
+    await observe(
+      'Disabled Offline plans during an open lesson, checked hidden actions and preserved progress, removed it and started a regular EQI Teaching, then restored the saved offline lesson after reinstallation.',
+    );
+    return;
+  }
   if (process.argv.includes('--companion')) {
     const i = course.chapters.findIndex((ch) =>
       ch.sections.some((s) => s.readings.some((p) => /\bPCA\b/.test(p.title))),
