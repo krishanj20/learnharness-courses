@@ -346,6 +346,10 @@ export function verifiedItem(output, exercise, objectives, hasImages = false) {
     : 'Tutor-derived solution';
   return {
     question,
+    firstPart:
+      exercise && hasText(output.firstPart) && output.firstPart.trim() !== question.trim()
+        ? output.firstPart.trim()
+        : undefined,
     rubric: output.rubric,
     solution,
     check: output.check,

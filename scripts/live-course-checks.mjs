@@ -81,8 +81,30 @@ export async function runCourseChecks({
     await page().waitForSelector(dock + ' .katex');
     const chatUrl = page().url();
     await page().setViewport({ width: 1440, height: 900 });
-    await click('Book PDF');
+    const citation = (page) => dock + ' button[aria-label="Open PDF page ' + page + '"]';
+    await page().waitForSelector(citation(244), { visible: true });
+    await page().click(citation(244));
     await page().waitForSelector('.bc-companion canvas[aria-label="Original PDF page 244"]');
+    const opened = await page().$('.bc-companion');
+    const atPage = (n) =>
+      page().waitForFunction(
+        (n) => {
+          const scroller = document.querySelector('.bc-companion-pages');
+          const article = scroller?.querySelector('[data-page="' + n + '"]')?.closest('article');
+          return (
+            article &&
+            Math.abs(article.getBoundingClientRect().top - scroller.getBoundingClientRect().top) < 3 &&
+            Number(document.querySelector('.bc-companion input').value) === n
+          );
+        },
+        {},
+        n,
+      );
+    await atPage(244);
+    await page().focus(citation(243));
+    await page().keyboard.press('Enter');
+    await atPage(243);
+    assert.ok(await opened.evaluate((node) => node === document.querySelector('.bc-companion')));
     assert.equal(page().url(), chatUrl);
     for (const width of [1440, 760]) {
       await page().setViewport({ width, height: 900 });
@@ -111,8 +133,49 @@ export async function runCourseChecks({
 
     assert.equal(await page().$('.bc-companion'), null);
     assert.equal(page().url(), chatUrl);
+    await page().reload();
+    await page().waitForSelector(citation(244), { visible: true });
+    await page().click(citation(244));
+    await atPage(244);
     await observe(
-      'Rendered an equation in a native course question with its cited PDF page in an independently scrollable pane. Closing the book kept the same Teaching.',
+      'Clicked PDF p. 244 in a PCA question, followed the page range to 243 by keyboard in the same pane, kept a draft on close, and reopened page 244 from the saved Teaching after reload.',
+    );
+    return;
+  }
+  if (process.argv.includes('--exam-sequence')) {
+    const addr = await examReady(1);
+    const chapterName = '2. ' + course.chapters[1].title;
+    await click(chapterName);
+    await click('Start chapter exam');
+    await see('Exercise 2.1', '.book-courses h1');
+    await click('I don’t know');
+    await see('What does the first observation tell you?', '.bc-thread');
+    assert.equal(await page().$$eval('.bc-thread', (nodes) => nodes.length), 1);
+    await stop();
+    await launch();
+    await click('Courses');
+    await click(title);
+    await click(chapterName);
+    await click('Resume Exercise 2.1');
+    await see('What does the first observation tell you?', '.bc-thread');
+    await page().type(
+      'textarea[aria-label="Your answer"]',
+      'The arithmetic mean bounds the geometric mean for positive gross returns.',
+    );
+    await click('Send answer');
+    await click('Next exam question');
+    await see('Follow-up to Exercise 2.1', '.book-courses h1');
+    assert.ok(!(await page().$eval('.bc-thread', (e) => e.innerText)).includes('first observation'));
+    await page().type(
+      'textarea[aria-label="Your answer"]',
+      'For positive gross returns their product cannot exceed the arithmetic mean raised to the number of observations.',
+    );
+    await click('Send answer');
+    await click('Next exam question');
+    await see('Exercise 2.2', '.book-courses h1');
+    assert.equal((await call('chat', addr)).exam.current.messages.length, 1);
+    await observe(
+      'Resumed EQI Exercise 2.1 at its hint after restarting, completed it and the independent follow-up, then opened Exercise 2.2 with a fresh conversation.',
     );
     return;
   }

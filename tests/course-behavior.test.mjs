@@ -1223,3 +1223,33 @@ test('book beside an existing Teaching opens its latest visible in-range PDF cit
   assert.equal((await h.call('teaching-book', { sessionId })).page, 2);
   await assert.rejects(h.call('teaching-book', { sessionId: 'different' }), /linked/);
 });
+
+test('multipart book exercises present one part, resume that step, and credit unaided successive parts', async (t) => {
+  const firstPart = 'Given 2 and 4, what is their mean?';
+  const question = firstPart + ' Then find their range.';
+  const h = host(t, [chapter(solo, [{ id: '1.1', text: question, page: 1 }])]);
+  await finishReadings(h);
+  h.reply({ ...verification(), firstPart });
+  const opened = await h.call('exam');
+  assert.equal(opened.exam.current.question, question);
+  assert.deepEqual(
+    opened.exam.current.messages.map((m) => m.text),
+    [firstPart],
+  );
+  h.reply({ reply: 'Yes. What is their range?', solved: false, assisted: false });
+  await h.call('turn', { action: 'answer', text: 'Three.' });
+  h.restart();
+  assert.equal((await h.call('chat')).exam.current.messages.at(-1).text, 'Yes. What is their range?');
+  h.reply((i) => {
+    assert.equal(i.item.question, question);
+    assert.deepEqual(
+      i.history.filter((m) => m.role === 'learner').map((m) => m.text),
+      ['Three.', 'Two.'],
+    );
+    return { reply: 'Both calculations are correct.', solved: true, assisted: false };
+  });
+  const end = await h.call('turn', { action: 'answer', text: 'Two.' });
+  assert.equal(end.phase, 'complete');
+  assert.equal(end.results[0].assisted, false);
+  assert.equal(end.results[0].answer, 'Three.\nTwo.');
+});

@@ -162,10 +162,10 @@ export function activate(ctx) {
               done: ch.chat.phase === 'complete',
               started: Boolean(
                 completed ||
-                ch.chat.messages.length ||
-                ch.chat.selectedPoint ||
-                Object.values(ch.teaching ?? {}).some((entry) => entry.sessionId) ||
-                Object.values(ch.offlineLessons ?? {}).some((lesson) => lesson.read),
+                  ch.chat.messages.length ||
+                  ch.chat.selectedPoint ||
+                  Object.values(ch.teaching ?? {}).some((entry) => entry.sessionId) ||
+                  Object.values(ch.offlineLessons ?? {}).some((lesson) => lesson.read),
               ),
             };
           }),
@@ -485,7 +485,7 @@ export function activate(ctx) {
       if (c.phase === 'exam') {
         const item = thread.item;
         const helpRequested =
-          /^(?:i (?:don['’]t|do not) know|help(?: me)?)[.!?]?(?: please help me work through this[.!?]?)?$/i.test(
+          /^(?:(?:i )?(?:don['’]?t|do not) know|(?:i['’]m )?not sure|no idea|idk|help(?: me)?)[.!?]?(?: please help me work through this[.!?]?)?$/i.test(
             conversation.pending.text,
           );
         const r = await ask(
@@ -512,7 +512,7 @@ export function activate(ctx) {
         const reply = validReply(r);
         if (typeof r.solved !== 'boolean' || typeof r.assisted !== 'boolean')
           throw Error('Incomplete exam assessment. Retry the saved answer.');
-        const assisted = !!item.assisted || r.assisted || !r.solved;
+        const assisted = !!item.assisted || helpRequested || r.assisted || (!r.solved && !item.firstPart);
         conversation.messages.push(msg('tutor', reply));
         item.assisted = assisted;
         if (r.solved) {
@@ -520,7 +520,12 @@ export function activate(ctx) {
           c.results.push({
             solvedAt: conversation.pending.submittedAt ?? Date.now(),
             question: item.question,
-            answer: conversation.pending.text,
+            answer: item.firstPart
+              ? conversation.messages
+                  .filter((m) => m.role === 'learner')
+                  .map((m) => m.text)
+                  .join('\n')
+              : conversation.pending.text,
             objectives: item.objectives,
             fullyTested: item.fullyTested ?? [],
             testedSkill: item.testedSkill ?? item.question,
@@ -673,7 +678,7 @@ export function activate(ctx) {
         if (entry.transfer)
           item.fullyTested = item.fullyTested.filter((id) => entry.fullyTested?.includes(id));
         entry.item = item;
-        entry.messages = [msg('tutor', item.question)];
+        entry.messages = [msg('tutor', item.firstPart ?? item.question)];
         c.phase = 'exam';
         return;
       }

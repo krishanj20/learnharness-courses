@@ -212,7 +212,7 @@ export async function startFixture() {
                     ? 'The last squared shock and conditional variance'
                     : 'Portable claim';
           const question = pca
-            ? 'For the fitted matrix $$\\widehat R=BF,$$ B contains asset loadings and F contains factor returns (PDF p. 244). If B is assets by factors and F is factors by dates, what is the shape of the fitted matrix?'
+            ? 'For the fitted matrix $$\\widehat R=BF,$$ B contains asset loadings and F contains factor returns (PDF p. 244). See also **PDF pp. 243–245**. If B is assets by factors and F is factors by dates, what is the shape of the fitted matrix?'
             : graphPilot
               ? 'What does a baseline provide?'
               : garch

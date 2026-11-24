@@ -4,11 +4,11 @@ Turn a searchable PDF into a personal course in stock LearnHarness. Open **Cours
 
 ## Install
 
-Download the [Courses plugin ZIP](downloads/book-courses-0.1.11.zip). Extract the **book-courses** folder into the directory shown in **Settings → Community plugins**, choose **Refresh plugins**, then enable **Courses**. The plugin targets LearnHarness 0.6.1 and plugin API 1.
+Download the [Courses plugin ZIP](downloads/book-courses-0.1.12.zip). Extract the **book-courses** folder into the directory shown in **Settings → Community plugins**, choose **Refresh plugins**, then enable **Courses**. The plugin targets LearnHarness 0.6.1 and plugin API 1.
 
 ## Study a book
 
-During a regular book Teaching, choose **Book PDF** in the top bar (or **… → Book PDF**). The scrollable reader opens beside the chat at the latest cited PDF page in the assignment, or at the start of the reading. Jump by PDF page number, zoom into equations, or return to the assignment. The tutor is prompted to typeset referenced equations and explain their notation in the question.
+In a course Teaching, click a citation such as **PDF p. 244** to open that page beside your chat. Clicking another citation moves the same reader. Page ranges open at their first page. You can also choose **Book PDF** in the top bar (or **… → Book PDF**). The scrollable reader opens beside the chat at the latest cited PDF page in the assignment, or at the start of the reading. Jump by PDF page number, zoom into equations, or return to the assignment. The tutor is prompted to typeset referenced equations and explain their notation in the question.
 
 Inside a chapter, **Jump to chapter** opens any chapter in the book. Each topic row shows its completed subparts and expands to its readings. **Reading options** includes offline study and the full section.
 
@@ -49,3 +49,5 @@ EQI_PDF="/path/to/EQI_20240814.pdf" npm test
 Set `FIXED_INCOME_PDF` to a local copy of the 2024 second edition of *Fixed Income Relative Value Analysis* to include the alternative-book test in the same run. It checks all 20 chapter starts and the unnumbered lessons in *Mean Reversion*.
 
 The [book verification](verification/book.md) documents comparisons with the original PDF. The [curriculum audit](verification/curriculum.md) maps the saved example course to all 14 chapters. The [stock desktop checks](report/verification-live.md) distinguish scripted model tests from live tutor observations. See the [OpenSpec proposal](openspec/changes/add-book-courses/proposal.md) for the feature requirements.
+
+Chapter exams open one question at a time. Select **I don’t know** for a smaller step. Return through **Resume** to continue that conversation, or expand **Choose an exam question** to work on a different exercise.

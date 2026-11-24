@@ -96,3 +96,8 @@ When a course tutor uses an equation in a question, the question SHALL supply th
 - **WHEN** the learner opens Book PDF in a linked Teaching
 - **THEN** the session and its answer controls remain available alongside the original book, starting at the latest cited physical page in the assignment or its first page
 - **AND** the learner can scroll, jump by page number, zoom, and close the reader with their answer draft intact
+
+#### Scenario: Follow a citation while answering
+- **WHEN** a learner activates a physical PDF page reference in a saved or newly rendered course Teaching
+- **THEN** the book opens beside the same conversation at that page, or the existing reader scrolls there
+- **AND** a page range opens at its first page and the learner’s answer draft is preserved

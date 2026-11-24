@@ -832,10 +832,29 @@ export function activate(ctx) {
           ),
           button('View source page', () => openReader(q.page, q.endPage ?? q.page, 'exam')),
         );
+        if (q.messages[0]?.text !== q.question) {
+          const original = el('details');
+          original.append(el('summary', 'Full exercise'));
+          markdown(original, q.question);
+          body.append(original);
+        }
+        const done = chat.exam.questions.filter((entry) => entry.status === 'Done').length;
+        body.append(el('p', done + ' of ' + chat.exam.questions.length + ' exam questions complete'));
         messages(body, q.messages);
         if (q.status === 'Done') {
           const next = chat.exam.questions[chat.exam.index];
           if (next) body.append(button('Next exam question', () => openQuestion(next.id), true));
+          else
+            body.append(
+              button(
+                'View chapter results',
+                () => {
+                  questionId = null;
+                  paintChat('results');
+                },
+                true,
+              ),
+            );
           return;
         }
         if (chat.phase !== 'exam' || chat.exam.current?.id !== q.id) {
@@ -887,7 +906,18 @@ export function activate(ctx) {
           panel.append(el('p', 'Available after all ' + ch.sections.length + ' lessons are done.'));
         else if (chat.phase === 'exam-ready')
           panel.append(button('Start chapter exam', () => openQuestion(), true));
-        else panel.append(el('p', chat.phase === 'complete' ? 'Done · See results below.' : 'In progress'));
+        else if (chat.phase === 'complete') panel.append(el('p', 'Done · See results below.'));
+        else {
+          const next = chat.exam?.questions[chat.exam.index];
+          if (next)
+            panel.append(
+              button(
+                chat.phase === 'exam' ? 'Resume ' + next.label : 'Next exam question',
+                () => openQuestion(next.id),
+                true,
+              ),
+            );
+        }
         if (!studying) {
           const questions =
             chat.exam?.questions ?? bookQuestions(exercises).map((q) => ({ ...q, status: 'Available' }));
@@ -897,7 +927,11 @@ export function activate(ctx) {
             row.append(button(q.label + ' · ' + q.status, () => openQuestion(q.id)));
             list.append(row);
           }
-          panel.append(list);
+          if (questions.length) {
+            const directory = el('details');
+            directory.append(el('summary', 'Choose an exam question'), list);
+            panel.append(directory);
+          }
         }
         for (const reason of chat.exam?.ungraded ?? []) panel.append(el('p', reason));
         const ranges = new Map();
@@ -1118,7 +1152,8 @@ export function activate(ctx) {
           tools.push(button('Update knowledge graph', async () => show(await updateChapterGraph())));
         body.append(options('Chapter tools', ...tools));
         if (reviewLesson === 'exam') body.querySelector('.bc-exam button')?.focus();
-        else if (reviewLesson != null) lessons.children[reviewLesson].querySelector('button').focus();
+        else if (Number.isInteger(reviewLesson))
+          lessons.children[reviewLesson].querySelector('button').focus();
         // Older versions kept only the current lesson boundary. Keep any earlier
         // turns available together when their individual lessons are unknown.
         const known = Object.values(chat.lessonRanges ?? {});
@@ -1158,7 +1193,12 @@ export function activate(ctx) {
             );
         }
         if (chat.phase === 'complete') {
-          heading('h2', 'Chapter exam results');
+          const resultsHeading = el('h2', 'Chapter exam results');
+          body.append(resultsHeading);
+          if (reviewLesson === 'results') {
+            resultsHeading.tabIndex = -1;
+            resultsHeading.focus();
+          }
           for (const p of ch.practice) body.append(reviewObjective(p));
           for (const r of chat.results) {
             const d = el('details');

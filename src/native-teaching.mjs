@@ -1,3 +1,4 @@
+import { pageReferences } from './page-references.mjs';
 import { originalPage } from './course-page.mjs';
 import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
@@ -117,6 +118,10 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
   const formulaGuidance =
     'For a book-course Teaching with the course_reading tool, include the actual equation in the visible explanation or in the probe or quiz question that uses it. Typeset inline math with $...$ or display math with $$...$$, define the symbols, and give the physical PDF page as a citation. If the learner must derive the result, show the starting equation and assumptions and leave the requested step for them. Check uncertain notation with course_page; never guess unreadable symbols.';
   ctx.registerInstructions?.({ agents: ['prober', 'teacher'], text: formulaGuidance });
+  ctx.handle('teaching-citation-pages', ({ sessionId }) => {
+    const address = links.get(sessionId);
+    return address ? book(address.id).pages.length : 0;
+  });
   ctx.handle('teaching-book', ({ sessionId }) => {
     const a = links.get(sessionId);
     if (!a) throw Error('Open a Teaching linked to a book lesson.');
@@ -139,8 +144,7 @@ export function registerTeaching(ctx, { state, book, save, ids, busy }) {
         else if (part?.type === 'toolCall' && ['probe', 'quiz'].includes(part.name))
           visible = part.arguments?.question;
         if (typeof visible !== 'string') continue;
-        for (const match of visible.matchAll(/\bPDF\s+p(?:age)?s?\.?\s*(\d+)/gi)) {
-          const n = Number(match[1]);
+        for (const { page: n } of pageReferences(visible)) {
           if (n >= reading.start && n <= reading.end) page = n;
         }
       }

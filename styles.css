@@ -596,3 +596,28 @@ body:has(> .bc-companion) {
     border-top: 1px solid var(--bc-line);
   }
 }
+
+:has(> .bc-citation-layer) {
+  position: relative;
+}
+.bc-citation-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.bc-citation-layer button, .bc-citation-layer button > span {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: inset 0 -1px currentColor;
+  color: inherit;
+  background: transparent;
+}
+.bc-citation-layer button:is(:hover, :focus-visible),
+.bc-citation-layer button:is(:hover, :focus-visible) > span {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}

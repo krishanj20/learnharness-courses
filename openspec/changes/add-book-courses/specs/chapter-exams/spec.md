@@ -63,3 +63,9 @@ After the lessons, Courses SHALL let the learner open an eligible book exercise 
 #### Scenario: Resume an exam begun in an earlier version
 - **WHEN** a saved chapter has a sequential exam transcript
 - **THEN** its submitted work, hints and results remain attached to the corresponding question, including a pending answer that needs a retry
+
+#### Scenario: Work through the exam one question at a time
+- **WHEN** the learner starts or resumes an exam from the chapter
+- **THEN** the current exercise opens with its own conversation and one task to answer
+- **AND** for a multipart book exercise the tutor presents each outstanding part in turn, with the full exercise available for reference
+- **AND** completing an exercise offers the next question or the chapter results
